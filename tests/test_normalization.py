@@ -1,6 +1,6 @@
 import unittest
 
-from autocomplete.normalization import normalize_text
+from autocomplete.normalization import is_supported_normalized_query, normalize_text
 
 
 class NormalizeTextTests(unittest.TestCase):
@@ -24,7 +24,12 @@ class NormalizeTextTests(unittest.TestCase):
     def test_returns_empty_text_when_there_are_no_searchable_characters(self) -> None:
         self.assertEqual(normalize_text("... !!!"), "")
 
+    def test_accepts_the_normalized_english_query_domain(self) -> None:
+        self.assertTrue(is_supported_normalized_query("python 3 documentation"))
+
+    def test_rejects_characters_outside_the_english_query_domain(self) -> None:
+        self.assertFalse(is_supported_normalized_query("א"))
+
 
 if __name__ == "__main__":
     unittest.main()
-

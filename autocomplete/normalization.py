@@ -4,6 +4,9 @@ import string
 
 
 _PUNCTUATION_TRANSLATION = str.maketrans("", "", string.punctuation)
+_SUPPORTED_NORMALIZED_CHARACTERS = frozenset(
+    string.ascii_lowercase + string.digits + " "
+)
 
 
 def normalize_text(text: str) -> str:
@@ -16,3 +19,8 @@ def normalize_text(text: str) -> str:
     without_punctuation = text.lower().translate(_PUNCTUATION_TRANSLATION)
     return " ".join(without_punctuation.split())
 
+
+def is_supported_normalized_query(text: str) -> bool:
+    """Return whether normalized input belongs to the indexed English domain."""
+
+    return all(character in _SUPPORTED_NORMALIZED_CHARACTERS for character in text)
