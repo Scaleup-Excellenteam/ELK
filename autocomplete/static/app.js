@@ -14,6 +14,12 @@ let activeRequest = null;
 let debounceTimer = null;
 let latestData = null;
 let activeSuggestionIndex = -1;
+let suggestionSocket = null;
+let socketQuery = "";
+let pendingSocketQuery = null;
+let reconnectTimer = null;
+let reconnectDelay = 1500;
+let pageIsUnloading = false;
 
 function setLoading(value) {
   inputSpinner.hidden = !value;
@@ -201,16 +207,129 @@ function renderSuggestions(data) {
   openSuggestions();
 }
 
+function createEditMessage(previousQuery, nextQuery) {
+  let keep = 0;
+  const sharedLength = Math.min(previousQuery.length, nextQuery.length);
+  while (
+    keep < sharedLength
+    && previousQuery[keep] === nextQuery[keep]
+  ) {
+    keep += 1;
+  }
+
+  let sharedSuffix = 0;
+  while (
+    sharedSuffix < previousQuery.length - keep
+    && sharedSuffix < nextQuery.length - keep
+    && previousQuery[previousQuery.length - sharedSuffix - 1]
+      === nextQuery[nextQuery.length - sharedSuffix - 1]
+  ) {
+    sharedSuffix += 1;
+  }
+
+  return {
+    type: "edit",
+    keep,
+    delete: previousQuery.length - keep - sharedSuffix,
+    insert: nextQuery.slice(keep, nextQuery.length - sharedSuffix),
+  };
+}
+
+function sendQueryOverWebSocket(query) {
+  if (!suggestionSocket || suggestionSocket.readyState !== WebSocket.OPEN) {
+    return false;
+  }
+
+  const setMessage = { type: "set", query };
+  const editMessage = createEditMessage(socketQuery, query);
+  const serializedSet = JSON.stringify(setMessage);
+  const serializedEdit = JSON.stringify(editMessage);
+  const serializedMessage = serializedEdit.length < serializedSet.length
+    ? serializedEdit
+    : serializedSet;
+
+  try {
+    suggestionSocket.send(serializedMessage);
+    socketQuery = query;
+    pendingSocketQuery = query;
+    return true;
+  } catch (_error) {
+    suggestionSocket.close();
+    return false;
+  }
+}
+
+function connectSuggestionSocket() {
+  clearTimeout(reconnectTimer);
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const socket = new WebSocket(`${protocol}//${window.location.host}/ws/completions`);
+  suggestionSocket = socket;
+
+  socket.addEventListener("open", () => {
+    socketQuery = "";
+    reconnectDelay = 1500;
+  });
+
+  socket.addEventListener("message", (event) => {
+    let data;
+    try {
+      data = JSON.parse(event.data);
+    } catch (_error) {
+      return;
+    }
+
+    if (data.type === "error") {
+      if (typeof data.query === "string") socketQuery = data.query;
+      pendingSocketQuery = null;
+      if (data.query !== queryInput.value && queryInput.value.trim()) {
+        requestSuggestions(queryInput.value);
+        return;
+      }
+      setLoading(false);
+      closeSuggestions();
+      showMessage(data.detail || "The search could not be completed.");
+      return;
+    }
+
+    if (data.query !== queryInput.value) return;
+    pendingSocketQuery = null;
+    setLoading(false);
+
+    if (data.type === "suggestions") {
+      renderSuggestions(data);
+    }
+  });
+
+  socket.addEventListener("close", () => {
+    if (suggestionSocket === socket) suggestionSocket = null;
+    socketQuery = "";
+    const interruptedQuery = pendingSocketQuery;
+    pendingSocketQuery = null;
+
+    if (interruptedQuery && interruptedQuery === queryInput.value) {
+      requestSuggestions(interruptedQuery);
+    }
+    if (!pageIsUnloading) {
+      reconnectTimer = setTimeout(connectSuggestionSocket, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+    }
+  });
+}
+
 async function requestSuggestions(query) {
   if (activeRequest) activeRequest.abort();
-  const request = new AbortController();
-  activeRequest = request;
+  activeRequest = null;
   setLoading(true);
   hideMessage();
   suggestionStatus.hidden = false;
   suggestionStatus.textContent = "Searching…";
   liveSuggestions.replaceChildren();
   openSuggestions();
+
+  if (sendQueryOverWebSocket(query)) return;
+
+  const request = new AbortController();
+  activeRequest = request;
 
   try {
     const response = await fetch("/api/completions", {
@@ -256,7 +375,7 @@ function queueSuggestions() {
   suggestionStatus.textContent = "Waiting for input…";
   liveSuggestions.replaceChildren();
   openSuggestions();
-  debounceTimer = setTimeout(() => requestSuggestions(query), 220);
+  debounceTimer = setTimeout(() => requestSuggestions(query), 150);
 }
 
 function showSuggestionsForCurrentInput() {
@@ -311,3 +430,10 @@ clearButton.addEventListener("click", () => {
 document.addEventListener("pointerdown", (event) => {
   if (!form.contains(event.target)) closeSuggestions();
 });
+
+window.addEventListener("beforeunload", () => {
+  pageIsUnloading = true;
+  clearTimeout(reconnectTimer);
+});
+
+connectSuggestionSocket();

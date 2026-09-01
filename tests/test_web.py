@@ -5,10 +5,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 import httpx
+from fastapi.testclient import TestClient
 
 from autocomplete.engine import get_best_unique_completions
 from autocomplete.index import build_index
-from autocomplete.web import create_app
+from autocomplete.web import _apply_query_message, create_app
 
 
 class AutocompleteWebTests(unittest.TestCase):
@@ -61,7 +62,10 @@ class AutocompleteWebTests(unittest.TestCase):
             'queryInput.addEventListener("click", showSuggestionsForCurrentInput)',
             response.text,
         )
-        self.assertIn("setTimeout(() => requestSuggestions(query), 220)", response.text)
+        self.assertIn("setTimeout(() => requestSuggestions(query), 150)", response.text)
+        self.assertIn("new WebSocket", response.text)
+        self.assertIn("createEditMessage(socketQuery, query)", response.text)
+        self.assertIn('fetch("/api/completions"', response.text)
 
     def test_static_styles_respect_hidden_interface_states(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -154,6 +158,84 @@ class AutocompleteWebTests(unittest.TestCase):
                     self.assertEqual(response.status_code, 200)
 
         self.assertEqual(search.call_count, 4)
+
+    def test_websocket_applies_edits_and_returns_completions(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = self._build_test_app(Path(temporary_directory))
+
+            with TestClient(app) as client:
+                with client.websocket_connect("/ws/completions") as websocket:
+                    websocket.send_json({"type": "set", "query": "python"})
+                    first = websocket.receive_json()
+                    websocket.send_json(
+                        {
+                            "type": "edit",
+                            "keep": 6,
+                            "delete": 0,
+                            "insert": " documentation",
+                        }
+                    )
+                    second = websocket.receive_json()
+
+        self.assertEqual(first["type"], "suggestions")
+        self.assertEqual(first["query"], "python")
+        self.assertEqual(second["query"], "python documentation")
+        self.assertEqual(
+            second["suggestions"][0]["completed_sentence"],
+            "Python documentation is useful.",
+        )
+
+    def test_websocket_and_http_share_the_completion_cache(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = self._build_test_app(Path(temporary_directory))
+
+            with patch(
+                "autocomplete.web.get_best_unique_completions",
+                wraps=get_best_unique_completions,
+            ) as search:
+                with TestClient(app) as client:
+                    with client.websocket_connect("/ws/completions") as websocket:
+                        websocket.send_json(
+                            {"type": "set", "query": "Python documentation"}
+                        )
+                        websocket.receive_json()
+
+                    response = client.post(
+                        "/api/completions",
+                        json={"query": "PYTHON DOCUMENTATION!!!"},
+                    )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(search.call_count, 1)
+
+    def test_invalid_websocket_edit_does_not_change_query_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = self._build_test_app(Path(temporary_directory))
+
+            with TestClient(app) as client:
+                with client.websocket_connect("/ws/completions") as websocket:
+                    websocket.send_json({"type": "set", "query": "python"})
+                    websocket.receive_json()
+                    websocket.send_json(
+                        {"type": "edit", "keep": 99, "delete": 0, "insert": "x"}
+                    )
+                    error = websocket.receive_json()
+                    websocket.send_json(
+                        {"type": "edit", "keep": 6, "delete": 0, "insert": " docs"}
+                    )
+                    recovered = websocket.receive_json()
+
+        self.assertEqual(error["type"], "error")
+        self.assertEqual(error["query"], "python")
+        self.assertEqual(recovered["query"], "python docs")
+
+    def test_query_edit_can_replace_text_in_the_middle(self) -> None:
+        updated = _apply_query_message(
+            "documantation",
+            {"type": "edit", "keep": 5, "delete": 2, "insert": "en"},
+        )
+
+        self.assertEqual(updated, "documentation")
 
     def test_rejects_unsupported_input(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

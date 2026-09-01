@@ -3,10 +3,11 @@
 from pathlib import Path
 from time import perf_counter
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from .cache import LruCache
 from .engine import DEFAULT_INDEX_PATH, get_best_unique_completions
@@ -50,6 +51,104 @@ class LocationResponse(BaseModel):
     next_offset: int | None
 
 
+def _apply_query_message(current_query: str, message: object) -> str:
+    """Apply one WebSocket set/edit message to a connection's query state."""
+
+    if not isinstance(message, dict):
+        raise ValueError("A WebSocket message must be a JSON object.")
+
+    message_type = message.get("type")
+    if message_type == "set":
+        query = message.get("query")
+        if not isinstance(query, str):
+            raise ValueError("A set message requires a string query.")
+        updated_query = query
+    elif message_type == "edit":
+        keep = message.get("keep")
+        delete = message.get("delete")
+        inserted_text = message.get("insert")
+        if type(keep) is not int or keep < 0:
+            raise ValueError("An edit message requires a non-negative keep value.")
+        if type(delete) is not int or delete < 0:
+            raise ValueError("An edit message requires a non-negative delete value.")
+        if not isinstance(inserted_text, str):
+            raise ValueError("An edit message requires string insert text.")
+        if keep > len(current_query) or keep + delete > len(current_query):
+            raise ValueError("The edit does not match the current query state.")
+        updated_query = (
+            current_query[:keep]
+            + inserted_text
+            + current_query[keep + delete :]
+        )
+    else:
+        raise ValueError("Message type must be either set or edit.")
+
+    if len(updated_query) > 500:
+        raise ValueError("The query cannot contain more than 500 characters.")
+    return updated_query
+
+
+def _completion_response(app: FastAPI, query: str) -> CompletionResponse:
+    """Search once through the shared validation, cache, and ranking path."""
+
+    normalized_query = normalize_text(query)
+    if not normalized_query:
+        raise HTTPException(
+            status_code=422,
+            detail="Enter text containing searchable characters.",
+        )
+
+    if not is_supported_normalized_query(normalized_query):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Only English letters, numbers, spaces and punctuation "
+                "are supported."
+            ),
+        )
+
+    if not app.state.index_path.is_file():
+        raise HTTPException(
+            status_code=503,
+            detail="The search index is not ready. Build it before searching.",
+        )
+
+    started_at = perf_counter()
+    index_stat = app.state.index_path.stat()
+    cache_key = (
+        normalized_query,
+        index_stat.st_mtime_ns,
+        index_stat.st_size,
+    )
+    cache_hit, cached_results = app.state.completion_cache.get(cache_key)
+    if cache_hit:
+        results = cached_results or ()
+    else:
+        results = tuple(
+            get_best_unique_completions(
+                normalized_query,
+                app.state.index_path,
+            )
+        )
+        app.state.completion_cache.put(cache_key, results)
+    elapsed_ms = (perf_counter() - started_at) * 1_000
+
+    return CompletionResponse(
+        query=query,
+        normalized_query=normalized_query,
+        elapsed_ms=round(elapsed_ms, 2),
+        suggestions=[
+            CompletionItem(
+                sentence_id=result.sentence_id,
+                completed_sentence=result.completed_sentence,
+                score=result.score,
+                occurrence_count=result.occurrence_count,
+            )
+            for result in results
+        ],
+    )
+
+
 def create_app(
     index_path: str | Path = DEFAULT_INDEX_PATH,
     cache_capacity: int = _DEFAULT_CACHE_CAPACITY,
@@ -81,62 +180,58 @@ def create_app(
 
     @app.post("/api/completions", response_model=CompletionResponse)
     def completions(request: CompletionRequest) -> CompletionResponse:
-        normalized_query = normalize_text(request.query)
-        if not normalized_query:
-            raise HTTPException(
-                status_code=422,
-                detail="Enter text containing searchable characters.",
-            )
+        return _completion_response(app, request.query)
 
-        if not is_supported_normalized_query(normalized_query):
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    "Only English letters, numbers, spaces and punctuation "
-                    "are supported."
-                ),
-            )
+    @app.websocket("/ws/completions")
+    async def websocket_completions(websocket: WebSocket) -> None:
+        await websocket.accept()
+        current_query = ""
 
-        if not app.state.index_path.is_file():
-            raise HTTPException(
-                status_code=503,
-                detail="The search index is not ready. Build it before searching.",
-            )
+        while True:
+            try:
+                message = await websocket.receive_json()
+                current_query = _apply_query_message(current_query, message)
 
-        started_at = perf_counter()
-        index_stat = app.state.index_path.stat()
-        cache_key = (
-            normalized_query,
-            index_stat.st_mtime_ns,
-            index_stat.st_size,
-        )
-        cache_hit, cached_results = app.state.completion_cache.get(cache_key)
-        if cache_hit:
-            results = cached_results or ()
-        else:
-            results = tuple(
-                get_best_unique_completions(
-                    normalized_query,
-                    app.state.index_path,
+                if not current_query:
+                    await websocket.send_json(
+                        {
+                            "type": "suggestions",
+                            "query": "",
+                            "normalized_query": "",
+                            "elapsed_ms": 0.0,
+                            "suggestions": [],
+                        }
+                    )
+                    continue
+
+                response = await run_in_threadpool(
+                    _completion_response,
+                    app,
+                    current_query,
                 )
-            )
-            app.state.completion_cache.put(cache_key, results)
-        elapsed_ms = (perf_counter() - started_at) * 1_000
-
-        return CompletionResponse(
-            query=request.query,
-            normalized_query=normalized_query,
-            elapsed_ms=round(elapsed_ms, 2),
-            suggestions=[
-                CompletionItem(
-                    sentence_id=result.sentence_id,
-                    completed_sentence=result.completed_sentence,
-                    score=result.score,
-                    occurrence_count=result.occurrence_count,
+                await websocket.send_json(
+                    {"type": "suggestions", **response.model_dump()}
                 )
-                for result in results
-            ],
-        )
+            except WebSocketDisconnect:
+                break
+            except HTTPException as error:
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "query": current_query,
+                        "status": error.status_code,
+                        "detail": str(error.detail),
+                    }
+                )
+            except ValueError as error:
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "query": current_query,
+                        "status": 422,
+                        "detail": str(error),
+                    }
+                )
 
     @app.get(
         "/api/completions/{sentence_id}/locations",

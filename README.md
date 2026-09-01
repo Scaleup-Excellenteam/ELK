@@ -261,7 +261,21 @@ FastAPI documentation is available while the server is running:
 - Swagger UI: <http://127.0.0.1:8000/docs>
 - Health check: `GET /api/health`
 - Search: `POST /api/completions`
+- Live search: `WS /ws/completions`
 - Locations: `GET /api/completions/{sentence_id}/locations`
+
+The browser prefers a persistent WebSocket connection for live completion. It
+sends either a complete `set` message or the smaller `edit` delta:
+
+```json
+{"type":"set","query":"python"}
+{"type":"edit","keep":6,"delete":0,"insert":" documentation"}
+```
+
+Each WebSocket connection owns its current query state. The server applies the
+edit, uses the same normalized LRU cache and search engine as the HTTP API, and
+returns the regular Top-5 response. If the socket is unavailable or disconnects,
+the browser automatically falls back to `POST /api/completions`.
 
 ### Search from PowerShell
 
@@ -312,6 +326,9 @@ Online phase
 User input
         │
         ▼
+WebSocket delta (HTTP fallback)
+        │
+        ▼
 Bounded LRU cache lookup
         │ cache miss
         ▼
@@ -360,6 +377,19 @@ Run the offline build before starting the UI:
 ```console
 python -m autocomplete build Archive
 ```
+
+### `No supported WebSocket library detected`
+
+Install the complete project requirements and restart the UI server:
+
+```console
+python -m pip install -r requirements.txt
+python -m autocomplete ui
+```
+
+The `uvicorn[standard]` dependency includes the WebSocket protocol support used
+by `/ws/completions`. Until it is installed, the browser safely falls back to
+the HTTP search endpoint.
 
 ### Port 8000 is already in use
 
