@@ -14,8 +14,9 @@ from . import ai_health
 from .cache import LruCache
 from .engine import DEFAULT_INDEX_PATH, get_best_unique_completions
 from .index import get_index_stats, get_sentence_locations
+from .keyboard import convert_hebrew_keyboard_layout
 from .logging_setup import get_log_file_size, get_recent_entries, log_event
-from .models import GroupedAutoCompleteData
+from .models import AutoCompleteData, GroupedAutoCompleteData
 from .normalization import is_supported_normalized_query, normalize_text
 from .proto import completions_pb2
 
@@ -136,6 +137,7 @@ def create_app(
     ) -> tuple[str, tuple[GroupedAutoCompleteData, ...], float]:
         """Run one completion lookup, sharing cache/log behaviour across endpoints."""
 
+        raw_query = convert_hebrew_keyboard_layout(raw_query)
         normalized_query = normalize_text(raw_query)
         if not normalized_query:
             log_event(

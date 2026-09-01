@@ -16,6 +16,7 @@ from .index import (
 from .models import AutoCompleteData, GroupedAutoCompleteData
 from .normalization import is_supported_normalized_query, normalize_text
 from .scoring import best_normalized_match_score
+from .keyboard import convert_hebrew_keyboard_layout
 
 
 DEFAULT_INDEX_PATH = Path("autocomplete.sqlite3")
@@ -57,6 +58,7 @@ def get_best_k_completions(
 ) -> list[AutoCompleteData]:
     """Return the five highest-scoring completions for ``prefix``."""
 
+    prefix = convert_hebrew_keyboard_layout(prefix)
     normalized_prefix = normalize_text(prefix)
     if not normalized_prefix or not is_supported_normalized_query(normalized_prefix):
         return []
@@ -152,6 +154,7 @@ def get_best_unique_completions(
 ) -> list[GroupedAutoCompleteData]:
     """Return five ranked sentences, grouping all duplicate locations."""
 
+    prefix = convert_hebrew_keyboard_layout(prefix)
     normalized_prefix = normalize_text(prefix)
     if not normalized_prefix or not is_supported_normalized_query(normalized_prefix):
         return []
