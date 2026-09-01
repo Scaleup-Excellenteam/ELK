@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
-from .cache import LruCache
+from .cache import DEFAULT_CACHE_CAPACITY, LruCache
 from .engine import DEFAULT_INDEX_PATH, get_best_unique_completions
 from .index import get_sentence_locations
 from .models import GroupedAutoCompleteData
@@ -17,8 +17,6 @@ from .normalization import is_supported_normalized_query, normalize_text
 
 
 _STATIC_DIRECTORY = Path(__file__).with_name("static")
-_DEFAULT_CACHE_CAPACITY = 1_000
-
 CompletionCacheKey = tuple[str, int, int]
 CompletionCacheValue = tuple[GroupedAutoCompleteData, ...]
 
@@ -151,7 +149,7 @@ def _completion_response(app: FastAPI, query: str) -> CompletionResponse:
 
 def create_app(
     index_path: str | Path = DEFAULT_INDEX_PATH,
-    cache_capacity: int = _DEFAULT_CACHE_CAPACITY,
+    cache_capacity: int = DEFAULT_CACHE_CAPACITY,
 ) -> FastAPI:
     """Create an application bound to one on-disk search index."""
 

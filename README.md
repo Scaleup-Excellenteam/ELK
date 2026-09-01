@@ -215,7 +215,9 @@ python -m autocomplete serve
 ```
 
 Text entered on each prompt is appended to the current query. Enter `#` to
-reset the query. Press `Ctrl+C` to exit.
+reset the query. Press `Ctrl+C` to exit. Each CLI session keeps up to 1,000
+normalized query results in an in-memory LRU cache. Resetting with `#` preserves
+the cache; exiting the process clears it.
 
 To use a custom index:
 
@@ -324,30 +326,36 @@ SQLite FTS5 trigram index
 
 Online phase
 User input
-        │
-        ▼
-WebSocket delta (HTTP fallback)
-        │
-        ▼
-Bounded LRU cache lookup
-        │ cache miss
-        ▼
+   ├── CLI session ────────────────┐
+   └── Browser                     │
+          │                        │
+          ▼                        │
+       WebSocket delta             │
+       (HTTP fallback)             │
+          │                        │
+          ▼                        ▼
+       FastAPI LRU cache      CLI LRU cache
+          │                        │
+          └────────────┬───────────┘
+                       │ cache miss
+                       ▼
 Exact lookup → indexed one-edit candidates
         │
         ▼
 Scoring → bounded Top-5 heap
         │
         ▼
-Store result in cache
+Store result in the process cache
         │
         ▼
 CLI / JSON API / live browser suggestions
 ```
 
-The FastAPI service keeps up to 1,000 recent normalized queries in memory.
-Repeated equivalent queries bypass SQLite, and the least-recently-used result
-is removed when the cache is full. The index file timestamp and size are part
-of each cache key, so rebuilding the index does not return stale suggestions.
+The FastAPI service and each CLI process keep separate caches of up to 1,000
+recent normalized queries in memory. Repeated equivalent queries bypass
+SQLite, and the least-recently-used result is removed when a cache is full. The
+index file timestamp and size are part of every cache key, so rebuilding the
+index does not return stale suggestions.
 
 Important modules:
 

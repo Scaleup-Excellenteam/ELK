@@ -8,6 +8,8 @@ from typing import Generic, TypeVar
 Key = TypeVar("Key")
 Value = TypeVar("Value")
 
+DEFAULT_CACHE_CAPACITY = 1_000
+
 
 class LruCache(Generic[Key, Value]):
     """Thread-safe least-recently-used cache with a fixed item capacity."""

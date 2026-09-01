@@ -5,24 +5,66 @@ from pathlib import Path
 from time import perf_counter
 from typing import Callable
 
+from .cache import DEFAULT_CACHE_CAPACITY, LruCache
 from .engine import DEFAULT_INDEX_PATH, get_best_k_completions
 from .index import build_index
+from .models import AutoCompleteData
+from .normalization import is_supported_normalized_query, normalize_text
 
 
-_INITIAL_PROMPT = "The system is ready. Enter your text:\n"
+_WELCOME_TITLE = "Sentence Autocomplete\n---------------------"
+_WELCOME_HELP = "Type text to search | # reset | Ctrl+C exit"
+_INITIAL_PROMPT = "\nSearch > "
+
+CliCacheKey = tuple[str, int, int]
+CliCacheValue = tuple[AutoCompleteData, ...]
+
+
+def _get_cached_cli_completions(
+    query: str,
+    index_path: str | Path,
+    cache: LruCache[CliCacheKey, CliCacheValue],
+) -> CliCacheValue:
+    """Return CLI completions, caching supported queries by index version."""
+
+    normalized_query = normalize_text(query)
+    if not normalized_query or not is_supported_normalized_query(normalized_query):
+        return tuple(get_best_k_completions(query, index_path))
+
+    try:
+        index_stat = Path(index_path).stat()
+    except OSError:
+        return tuple(get_best_k_completions(query, index_path))
+
+    cache_key = (
+        normalized_query,
+        index_stat.st_mtime_ns,
+        index_stat.st_size,
+    )
+    cache_hit, cached_results = cache.get(cache_key)
+    if cache_hit:
+        return cached_results if cached_results is not None else ()
+
+    results = tuple(get_best_k_completions(query, index_path))
+    cache.put(cache_key, results)
+    return results
 
 
 def run_interactive(
     index_path: str | Path = DEFAULT_INDEX_PATH,
     input_fn: Callable[[str], str] = input,
     output_fn: Callable[[str], None] = print,
+    cache_capacity: int = DEFAULT_CACHE_CAPACITY,
 ) -> None:
     """Read text fragments and display completions until input ends."""
 
     current_text = ""
+    completion_cache = LruCache[CliCacheKey, CliCacheValue](cache_capacity)
+    output_fn(_WELCOME_TITLE)
+    output_fn(_WELCOME_HELP)
 
     while True:
-        prompt = current_text if current_text else _INITIAL_PROMPT
+        prompt = f"\nContinue [{current_text}] > " if current_text else _INITIAL_PROMPT
 
         try:
             typed_text = input_fn(prompt)
@@ -32,16 +74,27 @@ def run_interactive(
 
         if "#" in typed_text:
             current_text = ""
+            output_fn("\nQuery reset.")
             continue
 
         current_text += typed_text
-        results = get_best_k_completions(current_text, index_path)
+        results = _get_cached_cli_completions(
+            current_text,
+            index_path,
+            completion_cache,
+        )
 
-        output_fn(f"Here are {len(results)} suggestions:")
+        if not results:
+            output_fn("\nNo suggestions found.")
+            continue
+
+        output_fn(f"\nSuggestions ({len(results)})")
+        output_fn("----------------")
         for position, result in enumerate(results, start=1):
+            output_fn(f"{position}) {result.completed_sentence}")
             output_fn(
-                f"{position}. {result.completed_sentence} "
-                f"({result.source_text}:{result.offset}, score={result.score})"
+                f"   Source: {result.source_text} | "
+                f"line {result.offset} | score {result.score}"
             )
 
 
