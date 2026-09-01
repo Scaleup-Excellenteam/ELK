@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Live view of the autocomplete service: index stats and recent queries." />
+    <title>Admin · Sentence Autocomplete</title>
+    <link rel="stylesheet" href="/static/styles.css?v=2" />
+    <link rel="stylesheet" href="/static/admin.css?v=2" />
+    <script src="/static/admin.js?v=2" defer></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        <div class="brand-copy">
+          <p class="eyebrow">Behind the scenes</p>
+          <h1>Admin dashboard</h1>
+          <p class="subtitle">Live index stats and recent search activity.</p>
+        </div>
+        <div class="status-pill" id="index-status">
+          <span class="status-dot" aria-hidden="true"></span><span>Checking index</span>
+        </div>
+      </header>
+
+      <nav class="admin-nav"><a href="/">← Back to search</a></nav>
+
+      <section class="stats-grid" id="stats-grid" aria-label="Index statistics">
+        <div class="stat-card"><p class="stat-label">Unique sentences</p><p class="stat-value" id="stat-sentences">–</p></div>
+        <div class="stat-card"><p class="stat-label">Source files</p><p class="stat-value" id="stat-sources">–</p></div>
+        <div class="stat-card"><p class="stat-label">Corpus locations</p><p class="stat-value" id="stat-locations">–</p></div>
+        <div class="stat-card"><p class="stat-label">Index size</p><p class="stat-value" id="stat-index-size">–</p></div>
+        <div class="stat-card"><p class="stat-label">Log file size</p><p class="stat-value" id="stat-log-size">–</p></div>
+        <div class="stat-card"><p class="stat-label">Server started</p><p class="stat-value stat-value-small" id="stat-started">–</p></div>
+      </section>
+
+      <section class="results-section admin-tool-section" aria-labelledby="wire-heading">
+        <div class="results-heading-row">
+          <div><p class="eyebrow">Uplink efficiency</p><h2 id="wire-heading">Wire format benchmark</h2></div>
+          <p class="search-meta">JSON vs Protobuf for the same query</p>
+        </div>
+        <p class="tool-description">
+          Every byte sent to a satellite costs time and power. Compares the JSON
+          <code>/api/completions</code> response against the binary Protobuf
+          <code>/api/completions/binary</code> response for the same query.
+        </p>
+        <div class="tool-controls">
+          <input id="wire-query" type="text" value="python documentation" placeholder="Query to compare" />
+          <button id="wire-run" class="primary-button" type="button">
+            <span class="button-label">Compare</span><span class="spinner" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div id="wire-result" class="tool-result" hidden></div>
+      </section>
+
+      <section class="results-section admin-tool-section" aria-labelledby="health-heading">
+        <div class="results-heading-row">
+          <div><p class="eyebrow">AI ops assistant</p><h2 id="health-heading">Health check</h2></div>
+          <p class="search-meta">Gemini reads the recent log and flags anything unusual</p>
+        </div>
+        <div class="tool-controls">
+          <button id="health-run" class="primary-button" type="button">
+            <span class="button-label">Run health check</span><span class="spinner" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div id="health-result" class="tool-result" hidden></div>
+      </section>
+
+      <section class="results-section admin-log-section" aria-labelledby="log-heading">
+        <div class="results-heading-row">
+          <div><p class="eyebrow">Live feed</p><h2 id="log-heading">Recent activity</h2></div>
+          <p class="search-meta">
+            <label class="auto-refresh-label">
+              <input type="checkbox" id="auto-refresh" checked /> Auto-refresh
+            </label>
+          </p>
+        </div>
+        <div id="log-empty" class="empty-state" hidden>
+          <div class="empty-icon" aria-hidden="true">⌕</div>
+          <h3>No activity yet</h3>
+          <p>Search requests will appear here as they happen.</p>
+        </div>
+        <div class="log-table-wrap">
+          <table class="log-table" id="log-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Event</th>
+                <th>Query</th>
+                <th>Elapsed</th>
+                <th>Results</th>
+                <th>Client</th>
+              </tr>
+            </thead>
+            <tbody id="log-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

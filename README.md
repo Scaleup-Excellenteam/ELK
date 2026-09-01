@@ -297,6 +297,58 @@ curl -X POST http://127.0.0.1:8000/api/completions \
   -d '{"query":"python documentatjon"}'
 ```
 
+## Part B: Google-technology integrations
+
+Framed around a ground-station-to-satellite scenario, where every byte and
+every operator glance costs time.
+
+### Compact wire format (Protobuf)
+
+`POST /api/completions/binary` runs the same lookup as `POST /api/completions`
+but reads a Protobuf-encoded `CompletionRequestProto` body and returns a
+Protobuf-encoded `CompletionResponseProto`, instead of JSON. The schema lives
+in [`autocomplete/proto/completions.proto`](autocomplete/proto/completions.proto).
+The point: on a constrained uplink, JSON's human-readable envelope is pure
+overhead — the admin dashboard's "Wire format benchmark" card measures the
+byte savings live, for any query.
+
+Regenerating the Python bindings after changing the `.proto` file requires
+`grpcio-tools` (a dev-only tool, not a runtime dependency):
+
+```console
+python -m pip install grpcio-tools
+python -m grpc_tools.protoc -I=autocomplete/proto --python_out=autocomplete/proto autocomplete/proto/completions.proto
+```
+
+### AI health check (Gemini)
+
+`POST /api/admin/health-check` sends the most recent logged requests to
+Gemini and asks it to flag anything that looks anomalous (latency spikes,
+error bursts, repeated rejections) in a couple of plain-language sentences —
+the "AI ops assistant" card on the [admin dashboard](#logging-and-the-admin-dashboard).
+
+This requires a Gemini API key, supplied through the `GEMINI_API_KEY`
+environment variable — never commit it to the repository or hardcode it in
+source. Without a key, the endpoint still responds (HTTP 200) but reports
+`"available": false` with an explanatory message, instead of failing.
+
+```console
+# Windows PowerShell
+$env:GEMINI_API_KEY = "your-key-here"
+
+# Linux or macOS
+export GEMINI_API_KEY="your-key-here"
+```
+
+## Logging and the admin dashboard
+
+Every `/api/completions` request (JSON or Protobuf) is logged as one JSON
+line to `autocomplete/logs/app.log` (git-ignored) and kept in a small
+in-memory buffer. The admin dashboard at `/admin` shows live index
+statistics, a real-time feed of recent activity, the wire-format benchmark,
+and the AI health check — useful for demoing what the service is doing
+behind the scenes.
+
 ## Run the tests
 
 From the repository root:
@@ -370,6 +422,10 @@ Important modules:
 | `autocomplete/cli.py` | Build, CLI, and UI commands |
 | `autocomplete/web.py` | FastAPI routes and response models |
 | `autocomplete/static/` | Browser interface |
+| `autocomplete/logging_setup.py` | Structured request logging (file + in-memory buffer) |
+| `autocomplete/proto/` | Protobuf schema and generated bindings for the binary endpoint |
+| `autocomplete/ai_health.py` | Gemini-based log health summaries |
+| `autocomplete/static/admin.*` | Admin dashboard (stats, live feed, benchmark, health check) |
 
 ## Troubleshooting
 
@@ -424,6 +480,7 @@ Archive.zip
 .venv/
 __pycache__/
 .pytest_cache/
+autocomplete/logs/
 ```
 
 Do not commit the corpus or generated index.

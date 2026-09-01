@@ -461,6 +461,27 @@ def iter_candidate_sentence_groups(
         yield from rows
 
 
+def get_index_stats(index_path: str | Path) -> dict[str, int]:
+    """Return row counts for the three core index tables."""
+
+    with closing(sqlite3.connect(index_path)) as connection:
+        sentence_count = connection.execute(
+            "SELECT COUNT(*) FROM sentence_groups"
+        ).fetchone()[0]
+        source_count = connection.execute(
+            "SELECT COUNT(*) FROM source_files"
+        ).fetchone()[0]
+        location_count = connection.execute(
+            "SELECT COUNT(*) FROM sentence_locations"
+        ).fetchone()[0]
+
+    return {
+        "sentence_count": sentence_count,
+        "source_count": source_count,
+        "location_count": location_count,
+    }
+
+
 def get_sentence_locations(
     index_path: str | Path,
     sentence_id: int,
