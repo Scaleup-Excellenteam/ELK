@@ -320,34 +320,41 @@ python -m pip install grpcio-tools
 python -m grpc_tools.protoc -I=autocomplete/proto --python_out=autocomplete/proto autocomplete/proto/completions.proto
 ```
 
-### AI health check (Gemini)
+### AI mission briefing (Gemini)
 
-`POST /api/admin/health-check` sends the most recent logged requests to
-Gemini and asks it to flag anything that looks anomalous (latency spikes,
-error bursts, repeated rejections) in a couple of plain-language sentences —
-the "AI ops assistant" card on the [admin dashboard](#logging-and-the-admin-dashboard).
+`POST /api/admin/mission-briefing` sends aggregate performance metrics to
+Gemini and asks for a concise status, observation, and recommended action.
+Raw queries and selected sentence text are never included in the prompt. The
+metrics cover recent latency, cache efficiency, errors, selected completions,
+and characters saved.
 
-This requires a Gemini API key, supplied through the `GEMINI_API_KEY`
-environment variable — never commit it to the repository or hardcode it in
-source. Without a key, the endpoint still responds (HTTP 200) but reports
-`"available": false` with an explanatory message, instead of failing.
+This requires a Gemini API key. Create the local `.env` file from the provided
+template, then replace the placeholder with your real key:
 
 ```console
-# Windows PowerShell
-$env:GEMINI_API_KEY = "your-key-here"
-
-# Linux or macOS
-export GEMINI_API_KEY="your-key-here"
+copy .env.example .env
 ```
+
+On Linux or macOS, use `cp .env.example .env` instead. The resulting file
+should contain:
+
+```dotenv
+GEMINI_API_KEY=your-real-key-here
+```
+
+The application loads this file automatically. `.env` is git-ignored, so the
+secret cannot be committed accidentally. Without a key, the endpoint still
+responds (HTTP 200) but reports `"available": false` with an explanatory
+message instead of failing.
 
 ## Logging and the admin dashboard
 
 Every `/api/completions` request (JSON or Protobuf) is logged as one JSON
 line to `autocomplete/logs/app.log` (git-ignored) and kept in a small
-in-memory buffer. The admin dashboard at `/admin` shows live index
-statistics, a real-time feed of recent activity, the wire-format benchmark,
-and the AI health check — useful for demoing what the service is doing
-behind the scenes.
+in-memory buffer. The admin dashboard at `/admin` aggregates those events into
+P95 latency, cache hit rate, slow-search and error counts. It displays only
+suggestions the user explicitly selected, plus characters saved, a latency
+chart, the wire-format benchmark, and the privacy-preserving mission briefing.
 
 ## Run the tests
 
@@ -424,8 +431,8 @@ Important modules:
 | `autocomplete/static/` | Browser interface |
 | `autocomplete/logging_setup.py` | Structured request logging (file + in-memory buffer) |
 | `autocomplete/proto/` | Protobuf schema and generated bindings for the binary endpoint |
-| `autocomplete/ai_health.py` | Gemini-based log health summaries |
-| `autocomplete/static/admin.*` | Admin dashboard (stats, live feed, benchmark, health check) |
+| `autocomplete/ai_health.py` | Gemini mission briefings from aggregate metrics |
+| `autocomplete/static/admin.*` | Mission-control dashboard, benchmarks, and selected completions |
 
 ## Troubleshooting
 

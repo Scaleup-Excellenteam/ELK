@@ -7,6 +7,7 @@ the admin dashboard reads for a live view of recent activity.
 
 import json
 import logging
+import math
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +23,40 @@ _entries_lock = Lock()
 
 _logger = logging.getLogger("autocomplete")
 _logger.setLevel(logging.INFO)
+
+
+def _load_recent_entries_from_disk() -> None:
+    """Restore the bounded live dashboard buffer after a server restart."""
+
+    if not LOG_FILE.is_file():
+        return
+
+    # Read only a bounded tail. A production log may be large, so startup must
+    # not scan the entire file merely to restore the admin dashboard.
+    with LOG_FILE.open("rb") as log_handle:
+        log_handle.seek(0, 2)
+        position = log_handle.tell()
+        chunks: list[bytes] = []
+        newline_count = 0
+        while position > 0 and newline_count <= _MAX_RECENT_ENTRIES:
+            chunk_size = min(8192, position)
+            position -= chunk_size
+            log_handle.seek(position)
+            chunk = log_handle.read(chunk_size)
+            chunks.append(chunk)
+            newline_count += chunk.count(b"\n")
+
+    raw_tail = b"".join(reversed(chunks)).decode("utf-8", errors="replace")
+    for line in raw_tail.splitlines()[-_MAX_RECENT_ENTRIES:]:
+        try:
+            entry = json.loads(line)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if isinstance(entry, dict):
+            _recent_entries.append(entry)
+
+
+_load_recent_entries_from_disk()
 
 
 def _ensure_file_handler() -> None:
@@ -58,6 +93,55 @@ def get_recent_entries(limit: int = 50, event: str | None = None) -> list[dict[s
         entries = [entry for entry in entries if entry.get("event") == event]
     entries.reverse()
     return entries[:limit]
+
+
+def get_activity_summary(search_limit: int = 100) -> dict[str, Any]:
+    """Aggregate recent activity without exposing raw query text."""
+
+    entries = get_recent_entries(limit=_MAX_RECENT_ENTRIES)
+    searches = [entry for entry in entries if entry.get("event") == "completion"]
+    searches = searches[:search_limit]
+    selections = [
+        entry for entry in entries if entry.get("event") == "completion_selected"
+    ]
+
+    latencies = [
+        float(entry["elapsed_ms"])
+        for entry in searches
+        if isinstance(entry.get("elapsed_ms"), (int, float))
+    ]
+    ordered_latencies = sorted(latencies)
+    percentile_index = max(0, math.ceil(len(ordered_latencies) * 0.95) - 1)
+    p95_latency_ms = (
+        ordered_latencies[percentile_index] if ordered_latencies else 0.0
+    )
+    cache_hits = sum(entry.get("cache_hit") is True for entry in searches)
+    characters_saved = sum(
+        int(entry.get("characters_saved", 0))
+        for entry in selections
+        if isinstance(entry.get("characters_saved"), int)
+    )
+    error_count = sum(
+        entry.get("event") in {"completion_error", "completion_rejected"}
+        for entry in entries
+    )
+
+    return {
+        "search_count": len(searches),
+        "average_latency_ms": round(sum(latencies) / len(latencies), 2)
+        if latencies
+        else 0.0,
+        "p95_latency_ms": round(p95_latency_ms, 2),
+        "cache_hits": cache_hits,
+        "cache_hit_rate": round(cache_hits / len(searches) * 100, 1)
+        if searches
+        else 0.0,
+        "selected_completions": len(selections),
+        "characters_saved": characters_saved,
+        "slow_searches": sum(latency >= 500 for latency in latencies),
+        "error_count": error_count,
+        "latency_samples": list(reversed(latencies[:30])),
+    }
 
 
 def get_log_file_size() -> int:

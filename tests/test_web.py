@@ -140,6 +140,27 @@ class AutocompleteWebTests(unittest.TestCase):
         self.assertEqual(first.json()["suggestions"], second.json()["suggestions"])
         self.assertEqual(search.call_count, 1)
 
+    def test_completion_logs_report_cache_hits(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = self._build_test_app(Path(temporary_directory))
+
+            with patch("autocomplete.web.log_event") as log_event:
+                for query in ("python documentation", "PYTHON DOCUMENTATION!!!"):
+                    response = self._request(
+                        app,
+                        "POST",
+                        "/api/completions",
+                        json={"query": query},
+                    )
+                    self.assertEqual(response.status_code, 200)
+
+        completion_calls = [
+            call for call in log_event.call_args_list if call.args == ("completion",)
+        ]
+        self.assertEqual(len(completion_calls), 2)
+        self.assertFalse(completion_calls[0].kwargs["cache_hit"])
+        self.assertTrue(completion_calls[1].kwargs["cache_hit"])
+
     def test_cache_evicts_the_least_recently_used_query(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             temporary_path = Path(temporary_directory)
@@ -160,6 +181,114 @@ class AutocompleteWebTests(unittest.TestCase):
                     self.assertEqual(response.status_code, 200)
 
         self.assertEqual(search.call_count, 4)
+
+    def test_records_only_an_explicitly_selected_completion(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = self._build_test_app(Path(temporary_directory))
+            search_response = self._request(
+                app,
+                "POST",
+                "/api/completions",
+                json={"query": "python doc"},
+            )
+            suggestion = search_response.json()["suggestions"][0]
+
+            with patch("autocomplete.web.log_event") as log_event:
+                selection_response = self._request(
+                    app,
+                    "POST",
+                    "/api/completions/selection",
+                    json={
+                        "query": "python doc",
+                        "sentence_id": suggestion["sentence_id"],
+                        "rank": 1,
+                        "elapsed_ms": 12.345,
+                    },
+                )
+
+        self.assertEqual(selection_response.status_code, 204)
+        log_event.assert_called_once()
+        event, = log_event.call_args.args
+        fields = log_event.call_args.kwargs
+        self.assertEqual(event, "completion_selected")
+        self.assertEqual(fields["query"], "python doc")
+        self.assertEqual(
+            fields["completed_sentence"],
+            "Python documentation is useful.",
+        )
+        self.assertEqual(fields["rank"], 1)
+        self.assertEqual(fields["search_elapsed_ms"], 12.35)
+        self.assertEqual(fields["occurrence_count"], 2)
+        self.assertEqual(
+            fields["characters_saved"],
+            len("Python documentation is useful.") - len("python doc"),
+        )
+
+    def test_rejects_a_selection_for_an_unknown_sentence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = self._build_test_app(Path(temporary_directory))
+
+            response = self._request(
+                app,
+                "POST",
+                "/api/completions/selection",
+                json={
+                    "query": "python",
+                    "sentence_id": 999_999,
+                    "rank": 1,
+                    "elapsed_ms": 10.0,
+                },
+            )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_admin_feed_requests_only_selected_completions(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = self._build_test_app(Path(temporary_directory))
+
+            response = self._request(app, "GET", "/static/admin.js")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("event=completion_selected", response.text)
+        self.assertIn("details.completed_sentence", response.text)
+
+    def test_admin_stats_include_recent_performance_metrics(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = self._build_test_app(Path(temporary_directory))
+            activity = {
+                "search_count": 4,
+                "average_latency_ms": 12.5,
+                "p95_latency_ms": 30.0,
+                "cache_hits": 3,
+                "cache_hit_rate": 75.0,
+                "selected_completions": 2,
+                "characters_saved": 18,
+                "slow_searches": 0,
+                "error_count": 1,
+                "latency_samples": [10.0, 30.0, 5.0, 5.0],
+            }
+
+            with patch("autocomplete.web.get_activity_summary", return_value=activity):
+                response = self._request(app, "GET", "/api/admin/stats")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        for key, value in activity.items():
+            self.assertEqual(body[key], value)
+
+    def test_admin_interface_uses_mission_briefing_and_latency_metrics(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = self._build_test_app(Path(temporary_directory))
+
+            page = self._request(app, "GET", "/admin")
+            script = self._request(app, "GET", "/static/admin.js")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("Mission briefing", page.text)
+        self.assertIn("Cache hit rate", page.text)
+        self.assertIn("Characters saved", page.text)
+        self.assertIn("latency-chart", page.text)
+        self.assertIn("/api/admin/mission-briefing", script.text)
 
     def test_websocket_applies_edits_and_returns_completions(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

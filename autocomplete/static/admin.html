@@ -3,20 +3,20 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Live view of the autocomplete service: index stats and recent queries." />
-    <title>Admin · Sentence Autocomplete</title>
-    <link rel="stylesheet" href="/static/styles.css?v=2" />
-    <link rel="stylesheet" href="/static/admin.css?v=2" />
-    <script src="/static/admin.js?v=2" defer></script>
+    <meta name="description" content="Mission-control view of autocomplete performance, efficiency and user value." />
+    <title>Mission Control · Sentence Autocomplete</title>
+    <link rel="stylesheet" href="/static/styles.css?v=7" />
+    <link rel="stylesheet" href="/static/admin.css?v=7" />
+    <script src="/static/admin.js?v=7" defer></script>
   </head>
   <body>
     <main class="app-shell">
       <header class="app-header">
         <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
         <div class="brand-copy">
-          <p class="eyebrow">Behind the scenes</p>
-          <h1>Admin dashboard</h1>
-          <p class="subtitle">Live index stats and recent search activity.</p>
+          <p class="eyebrow">Mission control</p>
+          <h1>Autocomplete operations</h1>
+          <p class="subtitle">Performance, resource efficiency and accepted completions.</p>
         </div>
         <div class="status-pill" id="index-status">
           <span class="status-dot" aria-hidden="true"></span><span>Checking index</span>
@@ -25,14 +25,59 @@
 
       <nav class="admin-nav"><a href="/">← Back to search</a></nav>
 
-      <section class="stats-grid" id="stats-grid" aria-label="Index statistics">
-        <div class="stat-card"><p class="stat-label">Unique sentences</p><p class="stat-value" id="stat-sentences">–</p></div>
-        <div class="stat-card"><p class="stat-label">Source files</p><p class="stat-value" id="stat-sources">–</p></div>
-        <div class="stat-card"><p class="stat-label">Corpus locations</p><p class="stat-value" id="stat-locations">–</p></div>
-        <div class="stat-card"><p class="stat-label">Index size</p><p class="stat-value" id="stat-index-size">–</p></div>
-        <div class="stat-card"><p class="stat-label">Log file size</p><p class="stat-value" id="stat-log-size">–</p></div>
-        <div class="stat-card"><p class="stat-label">Server started</p><p class="stat-value stat-value-small" id="stat-started">–</p></div>
+      <section class="stats-grid mission-stats" id="stats-grid" aria-label="Recent performance summary">
+        <div class="stat-card">
+          <p class="stat-label">P95 latency</p><p class="stat-value" id="stat-p95">–</p>
+          <p class="stat-context">95% of recent searches finish below this</p>
+        </div>
+        <div class="stat-card">
+          <p class="stat-label">Cache hit rate</p><p class="stat-value" id="stat-cache-rate">–</p>
+          <p class="stat-context" id="stat-cache-context">No searches measured</p>
+        </div>
+        <div class="stat-card">
+          <p class="stat-label">Selected completions</p><p class="stat-value" id="stat-selections">–</p>
+          <p class="stat-context">Explicit user choices in recent activity</p>
+        </div>
+        <div class="stat-card">
+          <p class="stat-label">Characters saved</p><p class="stat-value" id="stat-characters">–</p>
+          <p class="stat-context">Text users did not need to type</p>
+        </div>
       </section>
+
+      <div class="performance-grid">
+        <section class="results-section performance-panel" aria-labelledby="latency-heading">
+          <div class="results-heading-row">
+            <div><p class="eyebrow">Response time</p><h2 id="latency-heading">Recent latency</h2></div>
+            <p class="search-meta"><span id="stat-average">–</span> average</p>
+          </div>
+          <div id="latency-empty" class="chart-empty">Run a search to begin measuring latency.</div>
+          <svg id="latency-chart" class="latency-chart" viewBox="0 0 640 190" role="img" aria-label="Recent search latency in milliseconds" hidden>
+            <line x1="44" y1="24" x2="620" y2="24"></line>
+            <line x1="44" y1="92" x2="620" y2="92"></line>
+            <line x1="44" y1="160" x2="620" y2="160"></line>
+            <g id="latency-labels"></g>
+            <polygon id="latency-area"></polygon>
+            <polyline id="latency-line"></polyline>
+          </svg>
+        </section>
+
+        <section class="results-section performance-panel" aria-labelledby="efficiency-heading">
+          <div class="results-heading-row">
+            <div><p class="eyebrow">Compute efficiency</p><h2 id="efficiency-heading">Cache impact</h2></div>
+          </div>
+          <div class="efficiency-value" id="cache-impact-value">0 searches avoided</div>
+          <div class="efficiency-track" role="progressbar" aria-label="Cache hit rate" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="cache-progress">
+            <div class="efficiency-fill" id="cache-progress-fill"></div>
+          </div>
+          <p class="tool-description efficiency-copy" id="cache-impact-copy">
+            Cached results avoid repeated SQLite candidate retrieval and scoring.
+          </p>
+          <div class="efficiency-secondary">
+            <span><strong id="slow-searches">0</strong> slow searches</span>
+            <span><strong id="error-count">0</strong> rejected or failed</span>
+          </div>
+        </section>
+      </div>
 
       <section class="results-section admin-tool-section" aria-labelledby="wire-heading">
         <div class="results-heading-row">
@@ -53,22 +98,26 @@
         <div id="wire-result" class="tool-result" hidden></div>
       </section>
 
-      <section class="results-section admin-tool-section" aria-labelledby="health-heading">
+      <section class="results-section admin-tool-section mission-briefing" aria-labelledby="briefing-heading">
         <div class="results-heading-row">
-          <div><p class="eyebrow">AI ops assistant</p><h2 id="health-heading">Health check</h2></div>
-          <p class="search-meta">Gemini reads the recent log and flags anything unusual</p>
+          <div><p class="eyebrow">AI operations assistant</p><h2 id="briefing-heading">Mission briefing</h2></div>
+          <p class="search-meta">Gemini receives aggregate metrics only — never query text</p>
         </div>
+        <p class="tool-description">
+          Generates a concise status, observation and recommended action from the measured
+          latency, cache efficiency, errors and completion value shown above.
+        </p>
         <div class="tool-controls">
-          <button id="health-run" class="primary-button" type="button">
-            <span class="button-label">Run health check</span><span class="spinner" aria-hidden="true"></span>
+          <button id="briefing-run" class="primary-button" type="button">
+            <span class="button-label">Generate briefing</span><span class="spinner" aria-hidden="true"></span>
           </button>
         </div>
-        <div id="health-result" class="tool-result" hidden></div>
+        <div id="briefing-result" class="tool-result briefing-result" aria-live="polite" hidden></div>
       </section>
 
       <section class="results-section admin-log-section" aria-labelledby="log-heading">
         <div class="results-heading-row">
-          <div><p class="eyebrow">Live feed</p><h2 id="log-heading">Recent activity</h2></div>
+          <div><p class="eyebrow">User choices</p><h2 id="log-heading">Selected completions</h2></div>
           <p class="search-meta">
             <label class="auto-refresh-label">
               <input type="checkbox" id="auto-refresh" checked /> Auto-refresh
@@ -77,25 +126,38 @@
         </div>
         <div id="log-empty" class="empty-state" hidden>
           <div class="empty-icon" aria-hidden="true">⌕</div>
-          <h3>No activity yet</h3>
-          <p>Search requests will appear here as they happen.</p>
+          <h3>No selections yet</h3>
+          <p>Suggestions accepted with Enter or a click will appear here.</p>
         </div>
         <div class="log-table-wrap">
           <table class="log-table" id="log-table">
             <thead>
               <tr>
                 <th>Time</th>
-                <th>Event</th>
-                <th>Query</th>
-                <th>Elapsed</th>
-                <th>Results</th>
-                <th>Client</th>
+                <th>Typed text</th>
+                <th>Selected completion</th>
+                <th>Rank</th>
+                <th>Load time</th>
+                <th>Characters saved</th>
+                <th>Locations</th>
               </tr>
             </thead>
             <tbody id="log-body"></tbody>
           </table>
         </div>
       </section>
+
+      <details class="system-details">
+        <summary>System details</summary>
+        <div class="system-details-grid">
+          <div><span>Unique sentences</span><strong id="stat-sentences">–</strong></div>
+          <div><span>Source files</span><strong id="stat-sources">–</strong></div>
+          <div><span>Corpus locations</span><strong id="stat-locations">–</strong></div>
+          <div><span>Index size</span><strong id="stat-index-size">–</strong></div>
+          <div><span>Log file size</span><strong id="stat-log-size">–</strong></div>
+          <div><span>Server started</span><strong id="stat-started">–</strong></div>
+        </div>
+      </details>
     </main>
   </body>
 </html>

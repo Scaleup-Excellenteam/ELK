@@ -21,8 +21,13 @@ from starlette.concurrency import run_in_threadpool
 from . import ai_health
 from .cache import DEFAULT_CACHE_CAPACITY, LruCache
 from .engine import DEFAULT_INDEX_PATH, get_best_unique_completions
-from .index import get_index_stats, get_sentence_locations
-from .logging_setup import get_log_file_size, get_recent_entries, log_event
+from .index import get_index_stats, get_sentence_group, get_sentence_locations
+from .logging_setup import (
+    get_activity_summary,
+    get_log_file_size,
+    get_recent_entries,
+    log_event,
+)
 from .models import GroupedAutoCompleteData
 from .normalization import is_supported_normalized_query, normalize_text
 from .proto import completions_pb2
@@ -64,6 +69,14 @@ class CompletionResponse(BaseModel):
     normalized_query: str
     elapsed_ms: float
     suggestions: list[CompletionItem]
+
+
+class CompletionSelectionRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=500)
+    sentence_id: int = Field(gt=0)
+    rank: int = Field(ge=1, le=5)
+    # Keep this optional for browser tabs that still run an older app.js.
+    elapsed_ms: float = Field(default=0.0, ge=0)
 
 
 class LocationItem(BaseModel):
@@ -122,6 +135,16 @@ class AdminStatsResponse(BaseModel):
     location_count: int
     log_size_bytes: int
     server_started_at: str
+    search_count: int
+    average_latency_ms: float
+    p95_latency_ms: float
+    cache_hits: int
+    cache_hit_rate: float
+    selected_completions: int
+    characters_saved: int
+    slow_searches: int
+    error_count: int
+    latency_samples: list[float]
 
 
 class AdminLogEntry(BaseModel):
@@ -134,7 +157,7 @@ class AdminLogsResponse(BaseModel):
     entries: list[AdminLogEntry]
 
 
-class AdminHealthCheckResponse(BaseModel):
+class AdminMissionBriefingResponse(BaseModel):
     available: bool
     summary: str
     generated_at: str
@@ -255,6 +278,7 @@ def create_app(
             normalized_query=normalized_query,
             elapsed_ms=round(elapsed_ms, 2),
             suggestion_count=len(results),
+            cache_hit=cache_hit,
             client=client_host,
         )
 
@@ -281,6 +305,45 @@ def create_app(
                 for result in results
             ],
         )
+
+    @app.post(
+        "/api/completions/selection",
+        status_code=204,
+        response_class=Response,
+    )
+    def record_completion_selection(
+        selection: CompletionSelectionRequest,
+        http_request: Request,
+    ) -> Response:
+        """Record one suggestion the user explicitly accepted."""
+
+        if not app.state.index_path.is_file():
+            raise HTTPException(
+                status_code=503,
+                detail="The search index is not ready.",
+            )
+
+        sentence_group = get_sentence_group(
+            app.state.index_path,
+            selection.sentence_id,
+        )
+        if sentence_group is None:
+            raise HTTPException(status_code=404, detail="Sentence was not found.")
+
+        completed_sentence, occurrence_count = sentence_group
+        client_host = http_request.client.host if http_request.client else None
+        log_event(
+            "completion_selected",
+            query=selection.query,
+            sentence_id=selection.sentence_id,
+            completed_sentence=completed_sentence,
+            rank=selection.rank,
+            search_elapsed_ms=round(selection.elapsed_ms, 2),
+            characters_saved=max(0, len(completed_sentence) - len(selection.query)),
+            occurrence_count=occurrence_count,
+            client=client_host,
+        )
+        return Response(status_code=204)
 
     @app.websocket("/ws/completions")
     async def websocket_completions(websocket: WebSocket) -> None:
@@ -432,6 +495,7 @@ def create_app(
             if index_ready
             else {"sentence_count": 0, "source_count": 0, "location_count": 0}
         )
+        activity = get_activity_summary()
         return AdminStatsResponse(
             index_ready=index_ready,
             index_path=str(index_path),
@@ -441,6 +505,7 @@ def create_app(
             location_count=stats["location_count"],
             log_size_bytes=get_log_file_size(),
             server_started_at=_START_TIME.isoformat(timespec="seconds"),
+            **activity,
         )
 
     @app.get("/api/admin/logs", response_model=AdminLogsResponse)
@@ -464,15 +529,28 @@ def create_app(
             ]
         )
 
-    @app.post("/api/admin/health-check", response_model=AdminHealthCheckResponse)
-    def admin_health_check() -> AdminHealthCheckResponse:
-        entries = get_recent_entries(limit=100)
-        result = ai_health.generate_health_summary(entries)
-        return AdminHealthCheckResponse(
+    @app.post(
+        "/api/admin/mission-briefing",
+        response_model=AdminMissionBriefingResponse,
+    )
+    def admin_mission_briefing() -> AdminMissionBriefingResponse:
+        metrics = get_activity_summary()
+        result = ai_health.generate_mission_briefing(metrics)
+        return AdminMissionBriefingResponse(
             available=result.available,
             summary=result.summary,
             generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         )
+
+    @app.post(
+        "/api/admin/health-check",
+        response_model=AdminMissionBriefingResponse,
+        include_in_schema=False,
+    )
+    def legacy_admin_health_check() -> AdminMissionBriefingResponse:
+        """Keep older clients working while the dashboard uses mission briefing."""
+
+        return admin_mission_briefing()
 
     return app
 

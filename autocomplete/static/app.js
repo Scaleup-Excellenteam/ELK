@@ -152,10 +152,32 @@ function createResultCard(suggestion) {
   return item;
 }
 
+function recordSelectedCompletion(query, suggestion, rank, elapsedMs) {
+  fetch("/api/completions/selection", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query,
+      sentence_id: suggestion.sentence_id,
+      rank,
+      elapsed_ms: elapsedMs,
+    }),
+    keepalive: true,
+  }).catch(() => {
+    // Analytics must never interrupt the autocomplete interaction.
+  });
+}
+
 function selectSuggestion(index) {
   if (!latestData || !latestData.suggestions[index]) return;
   const selectedData = latestData;
   const suggestion = selectedData.suggestions[index];
+  recordSelectedCompletion(
+    selectedData.query,
+    suggestion,
+    index + 1,
+    selectedData.elapsed_ms,
+  );
   queryInput.value = suggestion.completed_sentence;
   clearButton.hidden = false;
   closeSuggestions();

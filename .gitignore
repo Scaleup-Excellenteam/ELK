@@ -4,4 +4,7 @@ Archive.zip
 __pycache__/
 .pytest_cache/
 .venv/
+.env
+.env.*
+!.env.example
 autocomplete/logs/

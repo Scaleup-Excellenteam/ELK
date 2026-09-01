@@ -1,4 +1,4 @@
-"""AI-generated health summaries of recent server activity, via Gemini.
+"""AI-generated mission briefings from aggregate service metrics, via Gemini.
 
 Mirrors what a satellite mission-control room does with telemetry: instead
 of a human scanning a raw event table, a model is asked to say in plain
@@ -6,83 +6,90 @@ language whether anything looks anomalous.
 """
 
 import os
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from google import genai
 from google.genai import errors as genai_errors
+from dotenv import load_dotenv
+
+
+_PROJECT_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(_PROJECT_ENV_FILE)
 
 _MODEL_NAME = "gemini-3.6-flash"
-_MAX_ENTRIES_IN_PROMPT = 100
 _API_KEY_ENV_VAR = "GEMINI_API_KEY"
 
 
 @dataclass
-class HealthCheckResult:
-    """The outcome of one AI health check: either a summary or why there isn't one."""
+class MissionBriefingResult:
+    """A generated mission briefing, or an explanation of its unavailability."""
 
     available: bool
     summary: str
 
 
-def _build_prompt(entries: list[dict[str, Any]]) -> str:
-    lines = []
-    for entry in entries[:_MAX_ENTRIES_IN_PROMPT]:
-        details = {
-            key: value for key, value in entry.items() if key not in {"timestamp", "event"}
-        }
-        lines.append(f"- {entry.get('timestamp')} {entry.get('event')} {details}")
-    log_text = "\n".join(lines)
-
+def _build_prompt(metrics: dict[str, Any]) -> str:
     return (
-        "You are a monitoring assistant for a ground-station search service that "
-        "relays commands to a satellite cluster. Below are the most recent request "
-        "log entries, newest first. In at most 3 short sentences and plain language, "
-        "say whether anything looks anomalous (rising latency, error spikes, repeated "
-        "rejections) or whether things look healthy. Only use numbers that appear "
-        "below; do not invent statistics.\n\n"
-        f"{log_text}"
+        "You are preparing a concise mission-control briefing for a ground-station "
+        "autocomplete service. The input contains aggregate metrics only; no raw user "
+        "queries are included. Use exactly this three-line format:\n"
+        "Status: Healthy or Attention needed\n"
+        "Observation: one short, concrete sentence\n"
+        "Recommendation: one short, actionable sentence\n"
+        "Use only the supplied numbers, do not invent causes, and say that more data "
+        "is needed when the sample is too small.\n\n"
+        f"Metrics: {json.dumps(metrics, sort_keys=True)}"
     )
 
 
-def generate_health_summary(entries: list[dict[str, Any]]) -> HealthCheckResult:
-    """Ask Gemini to summarize recent activity, or explain why it can't."""
+def generate_mission_briefing(metrics: dict[str, Any]) -> MissionBriefingResult:
+    """Ask Gemini to interpret aggregate metrics without receiving query text."""
 
     api_key = os.environ.get(_API_KEY_ENV_VAR)
     if not api_key:
-        return HealthCheckResult(
+        return MissionBriefingResult(
             available=False,
             summary=(
-                f"AI health checks are disabled: set the {_API_KEY_ENV_VAR} "
+                f"Mission briefings are disabled: set the {_API_KEY_ENV_VAR} "
                 "environment variable to enable them."
             ),
         )
 
-    if not entries:
-        return HealthCheckResult(available=True, summary="No activity has been logged yet.")
+    if not metrics.get("search_count"):
+        return MissionBriefingResult(
+            available=True,
+            summary=(
+                "Status: Healthy\n"
+                "Observation: No completed searches have been measured yet.\n"
+                "Recommendation: Run a few searches before generating a briefing."
+            ),
+        )
 
     try:
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
             model=_MODEL_NAME,
-            contents=_build_prompt(entries),
+            contents=_build_prompt(metrics),
         )
         summary = (response.text or "").strip()
     except genai_errors.APIError as error:
-        return HealthCheckResult(
+        return MissionBriefingResult(
             available=False,
-            summary=f"The AI health service is unavailable right now ({error}).",
+            summary=f"The mission briefing service is unavailable right now ({error}).",
         )
     except Exception as error:
-        return HealthCheckResult(
+        return MissionBriefingResult(
             available=False,
-            summary=f"The AI health check failed unexpectedly ({error}).",
+            summary=f"The mission briefing failed unexpectedly ({error}).",
         )
 
     if not summary:
-        return HealthCheckResult(
+        return MissionBriefingResult(
             available=False,
-            summary="The AI health service returned an empty response.",
+            summary="The mission briefing service returned an empty response.",
         )
 
-    return HealthCheckResult(available=True, summary=summary)
+    return MissionBriefingResult(available=True, summary=summary)

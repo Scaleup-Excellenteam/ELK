@@ -9,6 +9,23 @@
     source_count: document.getElementById("stat-sources"),
     location_count: document.getElementById("stat-locations"),
   };
+  const p95Element = document.getElementById("stat-p95");
+  const averageElement = document.getElementById("stat-average");
+  const cacheRateElement = document.getElementById("stat-cache-rate");
+  const cacheContextElement = document.getElementById("stat-cache-context");
+  const selectionsElement = document.getElementById("stat-selections");
+  const charactersElement = document.getElementById("stat-characters");
+  const cacheImpactValue = document.getElementById("cache-impact-value");
+  const cacheImpactCopy = document.getElementById("cache-impact-copy");
+  const cacheProgress = document.getElementById("cache-progress");
+  const cacheProgressFill = document.getElementById("cache-progress-fill");
+  const slowSearchesElement = document.getElementById("slow-searches");
+  const errorCountElement = document.getElementById("error-count");
+  const latencyChart = document.getElementById("latency-chart");
+  const latencyEmpty = document.getElementById("latency-empty");
+  const latencyLabels = document.getElementById("latency-labels");
+  const latencyArea = document.getElementById("latency-area");
+  const latencyLine = document.getElementById("latency-line");
   const indexSizeElement = document.getElementById("stat-index-size");
   const logSizeElement = document.getElementById("stat-log-size");
   const startedElement = document.getElementById("stat-started");
@@ -31,10 +48,49 @@
     return new Intl.NumberFormat().format(value);
   }
 
-  function eventBadgeClass(event) {
-    if (event.includes("error")) return "event-badge event-error";
-    if (event.includes("rejected")) return "event-badge event-rejected";
-    return "event-badge";
+  function formatMilliseconds(value) {
+    return `${Number(value).toFixed(value < 10 ? 1 : 0)} ms`;
+  }
+
+  function drawLatency(samples) {
+    if (!samples.length) {
+      latencyChart.hidden = true;
+      latencyEmpty.hidden = false;
+      return;
+    }
+
+    latencyEmpty.hidden = true;
+    latencyChart.hidden = false;
+    const left = 44;
+    const right = 620;
+    const top = 24;
+    const bottom = 160;
+    const maximum = Math.max(1, ...samples);
+    const points = samples.map((sample, index) => {
+      const fraction = samples.length === 1 ? 0.5 : index / (samples.length - 1);
+      const x = left + fraction * (right - left);
+      const y = bottom - (sample / maximum) * (bottom - top);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+
+    latencyLine.setAttribute("points", points.join(" "));
+    latencyArea.setAttribute(
+      "points",
+      `${left},${bottom} ${points.join(" ")} ${right},${bottom}`,
+    );
+    latencyLabels.replaceChildren();
+    [
+      [maximum, top + 4],
+      [maximum / 2, (top + bottom) / 2 + 4],
+      [0, bottom + 4],
+    ].forEach(([value, y]) => {
+      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      label.setAttribute("x", "36");
+      label.setAttribute("y", String(y));
+      label.setAttribute("text-anchor", "end");
+      label.textContent = Math.round(value);
+      latencyLabels.append(label);
+    });
   }
 
   async function refreshStats() {
@@ -54,6 +110,23 @@
       indexSizeElement.textContent = formatBytes(stats.index_size_bytes);
       logSizeElement.textContent = formatBytes(stats.log_size_bytes);
       startedElement.textContent = new Date(stats.server_started_at).toLocaleString();
+      p95Element.textContent = formatMilliseconds(stats.p95_latency_ms);
+      averageElement.textContent = formatMilliseconds(stats.average_latency_ms);
+      cacheRateElement.textContent = `${stats.cache_hit_rate.toFixed(1)}%`;
+      cacheContextElement.textContent = stats.search_count
+        ? `${stats.cache_hits} of ${stats.search_count} recent searches avoided SQLite`
+        : "No searches measured";
+      selectionsElement.textContent = formatNumber(stats.selected_completions);
+      charactersElement.textContent = formatNumber(stats.characters_saved);
+      cacheImpactValue.textContent = `${formatNumber(stats.cache_hits)} searches avoided`;
+      cacheImpactCopy.textContent = stats.search_count
+        ? `${stats.cache_hit_rate.toFixed(1)}% of the last ${stats.search_count} searches were served without candidate retrieval or scoring.`
+        : "Cached results avoid repeated SQLite candidate retrieval and scoring.";
+      cacheProgress.setAttribute("aria-valuenow", String(stats.cache_hit_rate));
+      cacheProgressFill.style.width = `${Math.min(100, stats.cache_hit_rate)}%`;
+      slowSearchesElement.textContent = formatNumber(stats.slow_searches);
+      errorCountElement.textContent = formatNumber(stats.error_count);
+      drawLatency(stats.latency_samples);
     } catch (error) {
       indexStatus.classList.add("offline");
       indexStatus.querySelector("span:last-child").textContent = "Unreachable";
@@ -62,7 +135,7 @@
 
   async function refreshLogs() {
     try {
-      const response = await fetch("/api/admin/logs?limit=100");
+      const response = await fetch("/api/admin/logs?limit=100&event=completion_selected");
       if (!response.ok) throw new Error("logs request failed");
       const data = await response.json();
       renderLogs(data.entries);
@@ -82,11 +155,12 @@
 
       row.innerHTML = `
         <td class="mono">${time}</td>
-        <td><span class="${eventBadgeClass(entry.event)}">${entry.event}</span></td>
-        <td class="log-query" title="${escapeHtml(details.query ?? "")}">${escapeHtml(details.query ?? details.reason ?? "–")}</td>
-        <td class="mono">${details.elapsed_ms !== undefined ? `${details.elapsed_ms} ms` : "–"}</td>
-        <td class="mono">${details.suggestion_count !== undefined ? details.suggestion_count : "–"}</td>
-        <td class="mono">${escapeHtml(details.client ?? "–")}</td>
+        <td class="log-query" title="${escapeHtml(details.query ?? "")}">${escapeHtml(details.query ?? "–")}</td>
+        <td class="log-query" title="${escapeHtml(details.completed_sentence ?? "")}">${escapeHtml(details.completed_sentence ?? "–")}</td>
+        <td class="mono">${details.rank ?? "–"}</td>
+        <td class="mono">${details.search_elapsed_ms !== undefined ? formatMilliseconds(details.search_elapsed_ms) : "–"}</td>
+        <td class="mono">${details.characters_saved ?? "–"}</td>
+        <td class="mono">${details.occurrence_count?.toLocaleString() ?? "–"}</td>
       `;
       logBody.appendChild(row);
     }
@@ -186,31 +260,31 @@
     }
   });
 
-  // --- AI health check (Gemini) -------------------------------------------
+  // --- AI mission briefing (Gemini) ---------------------------------------
 
-  const healthRunButton = document.getElementById("health-run");
-  const healthResult = document.getElementById("health-result");
+  const briefingRunButton = document.getElementById("briefing-run");
+  const briefingResult = document.getElementById("briefing-result");
 
-  healthRunButton.addEventListener("click", async () => {
-    healthRunButton.classList.add("loading");
-    healthRunButton.disabled = true;
-    healthResult.hidden = true;
-    healthResult.classList.remove("tool-result-error");
+  briefingRunButton.addEventListener("click", async () => {
+    briefingRunButton.classList.add("loading");
+    briefingRunButton.disabled = true;
+    briefingResult.hidden = true;
+    briefingResult.classList.remove("tool-result-error");
 
     try {
-      const response = await fetch("/api/admin/health-check", { method: "POST" });
+      const response = await fetch("/api/admin/mission-briefing", { method: "POST" });
       const data = await response.json();
 
-      healthResult.textContent = data.summary;
-      healthResult.classList.toggle("tool-result-error", !data.available);
-      healthResult.hidden = false;
+      briefingResult.textContent = data.summary;
+      briefingResult.classList.toggle("tool-result-error", !data.available);
+      briefingResult.hidden = false;
     } catch (error) {
-      healthResult.textContent = "Could not reach the health check endpoint.";
-      healthResult.classList.add("tool-result-error");
-      healthResult.hidden = false;
+      briefingResult.textContent = "Could not reach the mission briefing endpoint.";
+      briefingResult.classList.add("tool-result-error");
+      briefingResult.hidden = false;
     } finally {
-      healthRunButton.classList.remove("loading");
-      healthRunButton.disabled = false;
+      briefingRunButton.classList.remove("loading");
+      briefingRunButton.disabled = false;
     }
   });
 })();

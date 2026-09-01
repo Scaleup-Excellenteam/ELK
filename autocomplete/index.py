@@ -507,6 +507,25 @@ def get_sentence_locations(
         ).fetchall()
 
 
+def get_sentence_group(
+    index_path: str | Path,
+    sentence_id: int,
+) -> tuple[str, int] | None:
+    """Return the canonical sentence and occurrence count for one group id."""
+
+    with closing(sqlite3.connect(index_path)) as connection:
+        row = connection.execute(
+            """
+            SELECT original_sentence, occurrence_count
+            FROM sentence_groups
+            WHERE id = ?
+            """,
+            (sentence_id,),
+        ).fetchone()
+
+    return row
+
+
 def ranked_one_edit_glob_groups(query: str) -> list[tuple[int, tuple[str, ...]]]:
     """Group one-edit patterns by their best possible assignment score."""
 
