@@ -376,7 +376,7 @@ class AutocompleteWebTests(unittest.TestCase):
                 app,
                 "POST",
                 "/api/completions",
-                json={"query": "א"},
+                json={"query": "Ω"},
             )
 
         self.assertEqual(response.status_code, 422)

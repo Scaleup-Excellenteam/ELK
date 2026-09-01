@@ -142,7 +142,7 @@ class CompletionEndpointTests(WebApiTestCase):
                 )
 
     def test_rejects_text_outside_the_indexed_alphabet(self) -> None:
-        response = self.request("POST", "/api/completions", json={"query": "שלום עולם"})
+        response = self.request("POST", "/api/completions", json={"query": "Ω"})
 
         self.assertEqual(response.status_code, 422)
         self.assertIn("English", response.json()["detail"])

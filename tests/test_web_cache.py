@@ -161,7 +161,7 @@ class CompletionCacheTests(TemporaryCorpusTestCase):
         app = self.build_app()
 
         empty = self.search(app, "!!!")
-        unsupported = self.search(app, "שלום")
+        unsupported = self.search(app, "Ω")
 
         self.assertEqual(empty.status_code, 422)
         self.assertEqual(unsupported.status_code, 422)

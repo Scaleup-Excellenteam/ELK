@@ -85,7 +85,7 @@ class GetBestCompletionsTests(unittest.TestCase):
         self.assertEqual(get_best_k_completions("!!!", "unused.sqlite3"), [])
 
     def test_rejects_an_unsupported_query_without_opening_the_index(self) -> None:
-        self.assertEqual(get_best_k_completions("א", "unused.sqlite3"), [])
+        self.assertEqual(get_best_k_completions("Ω", "unused.sqlite3"), [])
 
     def test_finds_a_five_character_query_missing_one_character(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
