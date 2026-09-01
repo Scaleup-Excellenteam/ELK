@@ -68,7 +68,10 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     build_parser = subparsers.add_parser("build", help="build the offline index")
-    build_parser.add_argument("source_root", help="directory containing corpus text files")
+    build_parser.add_argument(
+        "source_root",
+        help="directory or ZIP archive containing corpus text files",
+    )
     build_parser.add_argument(
         "--index",
         default=str(DEFAULT_INDEX_PATH),

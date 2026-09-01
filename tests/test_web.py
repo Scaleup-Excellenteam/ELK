@@ -42,6 +42,24 @@ class AutocompleteWebTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Sentence Autocomplete", response.text)
+        self.assertIn('role="combobox"', response.text)
+        self.assertIn('placeholder="Search for a sentence…"', response.text)
+        self.assertNotIn("python documentatjon", response.text)
+        self.assertNotIn("Index ready", response.text)
+
+    def test_interface_searches_as_the_input_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = self._build_test_app(Path(temporary_directory))
+
+            response = self._request(app, "GET", "/static/app.js")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('queryInput.addEventListener("input", queueSuggestions)', response.text)
+        self.assertIn(
+            'queryInput.addEventListener("click", showSuggestionsForCurrentInput)',
+            response.text,
+        )
+        self.assertIn("setTimeout(() => requestSuggestions(query), 220)", response.text)
 
     def test_static_styles_respect_hidden_interface_states(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

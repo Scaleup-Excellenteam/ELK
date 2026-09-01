@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from zipfile import ZipFile
 
 from autocomplete.index import (
     _split_balanced,
@@ -14,6 +15,23 @@ from autocomplete.index import (
 
 
 class CorpusIndexTests(unittest.TestCase):
+    def test_builds_the_index_directly_from_a_zip_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_path = Path(temporary_directory)
+            archive_path = temporary_path / "Archive.zip"
+            with ZipFile(archive_path, "w") as archive:
+                archive.writestr(
+                    "Archive/sentences.txt",
+                    "A sentence built directly from ZIP.\n",
+                )
+            index_path = temporary_path / "autocomplete.sqlite3"
+
+            stored_sentences = build_index(archive_path, index_path)
+            matches = find_exact_matches(index_path, "directly from zip")
+
+        self.assertEqual(stored_sentences, 1)
+        self.assertEqual(matches[0].source_text, "sentences.txt")
+
     def test_builds_an_index_and_finds_a_normalized_substring(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             temporary_path = Path(temporary_directory)

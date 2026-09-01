@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="Fast, typo-tolerant autocomplete over an indexed corpus." />
     <title>Sentence Autocomplete</title>
-    <link rel="stylesheet" href="/static/styles.css?v=2" />
-    <script src="/static/app.js?v=2" defer></script>
+    <link rel="stylesheet" href="/static/styles.css?v=3" />
+    <script src="/static/app.js?v=4" defer></script>
   </head>
   <body>
     <main class="app-shell">
@@ -15,45 +15,43 @@
         <div class="brand-copy">
           <p class="eyebrow">Indexed corpus search</p>
           <h1>Sentence Autocomplete</h1>
-          <p class="subtitle">Five ranked completions, tolerant of one typing mistake.</p>
-        </div>
-        <div class="status-pill" id="index-status">
-          <span class="status-dot" aria-hidden="true"></span><span>Checking index</span>
+          <p class="subtitle">Five ranked completions, updated as you type.</p>
         </div>
       </header>
 
       <section class="search-panel" aria-labelledby="search-heading">
         <div class="search-intro">
           <div><p class="eyebrow">Search</p><h2 id="search-heading">Complete a sentence</h2></div>
-          <p>Exact matches are ranked first. One missing, extra, or replaced character is allowed.</p>
+          <p>Type naturally. One missing, extra, or replaced character is allowed.</p>
         </div>
         <form id="search-form" class="search-form">
           <label for="query">Start typing</label>
           <div class="search-controls">
             <span class="input-icon" aria-hidden="true">⌕</span>
             <input id="query" name="query" type="text" maxlength="500" autocomplete="off"
-              spellcheck="false" placeholder="Try: python documentatjon" autofocus />
+              spellcheck="false" placeholder="Search for a sentence…" autofocus
+              role="combobox" aria-autocomplete="list" aria-controls="live-suggestions"
+              aria-expanded="false" />
+            <span id="input-spinner" class="input-spinner" aria-hidden="true" hidden></span>
             <button id="clear-button" class="clear-input" type="button" aria-label="Clear search" hidden>×</button>
-            <button id="search-button" class="primary-button" type="submit">
-              <span class="button-label">Search</span><span class="spinner" aria-hidden="true"></span>
-            </button>
+
+            <div id="suggestions-popover" class="suggestions-popover" hidden>
+              <p id="suggestion-status" class="suggestion-status" aria-live="polite"></p>
+              <ol id="live-suggestions" class="live-suggestions" role="listbox"></ol>
+              <p class="keyboard-hint"><span>↑↓</span> Navigate <span>Enter</span> Select <span>Esc</span> Close</p>
+            </div>
           </div>
-          <p class="input-hint">English letters, numbers, spaces and punctuation.</p>
+          <p class="input-hint">Suggestions refresh automatically after every edit.</p>
+          <div id="message" class="message" role="alert" hidden></div>
         </form>
       </section>
 
-      <section class="results-section" aria-labelledby="results-heading">
+      <section id="results-section" class="results-section" aria-labelledby="results-heading" hidden>
         <div class="results-heading-row">
-          <div><p class="eyebrow">Top matches</p><h2 id="results-heading">Suggestions</h2></div>
-          <p id="search-meta" class="search-meta" aria-live="polite">Ready to search</p>
+          <div><p class="eyebrow">Selected match</p><h2 id="results-heading">Completion details</h2></div>
+          <p id="search-meta" class="search-meta" aria-live="polite"></p>
         </div>
-        <div id="message" class="message" role="alert" hidden></div>
         <ol id="results" class="results-list" aria-live="polite"></ol>
-        <div id="empty-state" class="empty-state">
-          <div class="empty-icon" aria-hidden="true">⌕</div>
-          <h3>Search the indexed corpus</h3>
-          <p>Your five best unique completions will appear here.</p>
-        </div>
       </section>
     </main>
   </body>
