@@ -18,6 +18,7 @@ from .logging_setup import get_log_file_size, get_recent_entries, log_event
 from .models import GroupedAutoCompleteData
 from .normalization import is_supported_normalized_query, normalize_text
 from .proto import completions_pb2
+from .snapshot import resolve_active_index_path
 
 
 _STATIC_DIRECTORY = Path(__file__).with_name("static")
@@ -115,6 +116,19 @@ def create_app(
     ](cache_capacity)
     app.mount("/static", StaticFiles(directory=_STATIC_DIRECTORY), name="static")
 
+    def active_index_path() -> Path:
+        """Resolve which index file is current, right now, for this request.
+
+        Resolved fresh on every call instead of once at startup: a snapshot
+        published by a concurrent offline build (see ``autocomplete.snapshot``)
+        is served on the very next request, with no restart. When no
+        snapshot pointer exists, this is ``app.state.index_path`` unchanged,
+        so direct, non-snapshot ``--index`` usage keeps working exactly as
+        before ZDT existed.
+        """
+
+        return Path(resolve_active_index_path(app.state.index_path))
+
     @app.get("/", include_in_schema=False)
     def home() -> FileResponse:
         return FileResponse(_STATIC_DIRECTORY / "index.html")
@@ -127,7 +141,7 @@ def create_app(
     def health() -> dict[str, object]:
         return {
             "status": "ok",
-            "index_ready": app.state.index_path.is_file(),
+            "index_ready": active_index_path().is_file(),
         }
 
     def resolve_completions(
@@ -164,7 +178,8 @@ def create_app(
                 ),
             )
 
-        if not app.state.index_path.is_file():
+        current_index_path = active_index_path()
+        if not current_index_path.is_file():
             log_event(
                 "completion_rejected",
                 reason="index_not_ready",
@@ -177,7 +192,7 @@ def create_app(
             )
 
         started_at = perf_counter()
-        index_stat = app.state.index_path.stat()
+        index_stat = current_index_path.stat()
         cache_key = (
             normalized_query,
             index_stat.st_mtime_ns,
@@ -191,7 +206,7 @@ def create_app(
                 results = tuple(
                     get_best_unique_completions(
                         normalized_query,
-                        app.state.index_path,
+                        current_index_path,
                     )
                 )
             except Exception as error:
@@ -295,11 +310,12 @@ def create_app(
         offset: int = Query(default=0, ge=0),
         limit: int = Query(default=20, ge=1, le=100),
     ) -> LocationResponse:
-        if not app.state.index_path.is_file():
+        current_index_path = active_index_path()
+        if not current_index_path.is_file():
             raise HTTPException(status_code=503, detail="The search index is not ready.")
 
         rows = get_sentence_locations(
-            app.state.index_path,
+            current_index_path,
             sentence_id,
             limit=limit + 1,
             offset=offset,
@@ -316,7 +332,7 @@ def create_app(
 
     @app.get("/api/admin/stats", response_model=AdminStatsResponse)
     def admin_stats() -> AdminStatsResponse:
-        index_path = app.state.index_path
+        index_path = active_index_path()
         index_ready = index_path.is_file()
         stats = (
             get_index_stats(index_path)

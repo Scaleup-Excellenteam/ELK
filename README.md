@@ -324,6 +324,44 @@ $env:GEMINI_API_KEY = "your-key-here"
 export GEMINI_API_KEY="your-key-here"
 ```
 
+## Zero-downtime snapshots (ZDT)
+
+`python -m autocomplete build` (above) rebuilds the index file in place —
+simple, but a running server that is mid-query when a rebuild starts can see
+a half-written file. `build-snapshot` avoids that by never touching the
+index a server might be reading:
+
+```console
+python -m autocomplete build-snapshot Archive
+```
+
+This builds a fresh, independently versioned SQLite file under
+`autocomplete.sqlite3.snapshots/` and, only once that build finishes and
+validates, atomically republishes `autocomplete.sqlite3.current` (a small
+pointer file, updated via write-then-rename so it is never observed
+half-written) to name it. `python -m autocomplete ui` and
+`python -m autocomplete serve` resolve that pointer fresh on every request —
+they already open a new SQLite connection per query rather than loading one
+into memory at startup, so "watch the pointer and swap the active snapshot"
+falls out of that existing per-request lookup for free. A new snapshot is
+served on the very next request, with no restart, while requests already in
+flight keep reading whichever snapshot they resolved, because the old
+snapshot file is never modified or deleted.
+
+Adding a new data source live, with zero downtime, is therefore:
+
+1. Land the new corpus files somewhere `build-snapshot` can read them
+   (a local directory or ZIP, or a path on a shared/mounted filesystem for a
+   remote hand-off — the same directory-or-ZIP sources `build` already reads).
+2. Run `python -m autocomplete build-snapshot <source> --index autocomplete.sqlite3`
+   against the same `--index` the running server was started with.
+3. The pointer flips only after the new snapshot is built and validated; the
+   already-running `ui`/`serve` process picks it up on its next request.
+
+If no `.current` pointer file exists yet, `ui` and `serve` fall back to the
+`--index` path directly — `build`'s plain, in-place workflow above keeps
+working exactly as documented, unchanged.
+
 ## Logging and the admin dashboard
 
 Every `/api/completions` request (JSON or Protobuf) is logged as one JSON
@@ -395,6 +433,7 @@ Important modules:
 | `autocomplete/engine.py` | Ranking and Top-5 result selection |
 | `autocomplete/cache.py` | Thread-safe bounded LRU cache |
 | `autocomplete/cli.py` | Build, CLI, and UI commands |
+| `autocomplete/snapshot.py` | Versioned snapshots and the atomic pointer behind zero-downtime rebuilds |
 | `autocomplete/web.py` | FastAPI routes and response models |
 | `autocomplete/static/` | Browser interface |
 | `autocomplete/logging_setup.py` | Structured request logging (file + in-memory buffer) |

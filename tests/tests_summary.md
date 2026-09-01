@@ -80,6 +80,21 @@ File: test_normalization_rules.py
 - Expected outcomes: All ASCII punctuation removed, digits and letters kept, tabs/newlines as separators, normalization idempotent.
 - Methodology: Sweeping all of string.punctuation, whitespace-only and empty edge cases, and asserting normalized English always stays in the domain.
 
+File: test_snapshot.py
+- What it tests: The offline-to-online filesystem hand-off behind zero-downtime rebuilds (autocomplete/snapshot.py) — versioned snapshot paths, the atomic pointer file, and build_snapshot end to end.
+- Expected outcomes: Snapshots land under a `.snapshots` directory without ever touching the base index path, the pointer always resolves to a real file or falls back to the base path, and a failed build leaves the previous pointer untouched.
+- Methodology: Direct unit tests on the path helpers and pointer read/write, plus real corpus builds through build_snapshot, including a mocked validation failure.
+
+File: test_cli_snapshot.py
+- What it tests: The `build-snapshot` CLI command and a live pointer flip mid interactive-session.
+- Expected outcomes: The command reports sentences stored and publishes the pointer instead of writing the `--index` path directly; an offline build finishing between two interactive turns is served without restarting the session.
+- Methodology: Captured stdout over a real build, patched dispatch args, and a scripted input function that runs build_snapshot as a side effect between two turns of run_interactive.
+
+File: test_web_snapshot.py
+- What it tests: Zero-downtime serving at the FastAPI layer — completions, health, admin stats, and locations all resolving the current snapshot pointer.
+- Expected outcomes: Every endpoint serves from the pointed snapshot; publishing a new snapshot is reflected on the very next request with no app recreation; a snapshot already resolved by a request keeps working after a later pointer flip.
+- Methodology: In-process ASGI requests over apps built with build_snapshot, including a before/after pointer flip within one test and a second app pinned to the old snapshot file directly.
+
 File: test_scoring.py
 - What it tests: The best_match_score function against the official worked examples from the assignment appendix.
 - Expected outcomes: 2 points per character on an exact match, position-based penalties for substitution/insertion/deletion, more than one edit rejected.
