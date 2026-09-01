@@ -6,6 +6,18 @@ from autocomplete.corpus import CorpusEntry, iter_corpus_entries
 
 
 class IterCorpusEntriesTests(unittest.TestCase):
+    def test_removes_pdf_page_break_control_characters_from_sentence_edges(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            (root / "pages.txt").write_text(
+                "\x02\f  Clean visible sentence\v\n",
+                encoding="utf-8",
+            )
+
+            entries = list(iter_corpus_entries(root))
+
+        self.assertEqual(entries[0].original_sentence, "Clean visible sentence")
+
     def test_reads_nested_files_and_keeps_original_line_numbers(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -53,4 +65,3 @@ class IterCorpusEntriesTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -55,6 +55,14 @@ def _build_command(source_root: str, index_path: str) -> None:
     )
 
 
+def _ui_command(index_path: str, host: str, port: int) -> None:
+    import uvicorn
+
+    from .web import create_app
+
+    uvicorn.run(create_app(index_path), host=host, port=port)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Sentence autocomplete")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -74,10 +82,29 @@ def main() -> None:
         help="SQLite index path",
     )
 
+    ui_parser = subparsers.add_parser("ui", help="start the FastAPI web interface")
+    ui_parser.add_argument(
+        "--index",
+        default=str(DEFAULT_INDEX_PATH),
+        help="SQLite index path",
+    )
+    ui_parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="host address for the web interface",
+    )
+    ui_parser.add_argument(
+        "--port",
+        default=8000,
+        type=int,
+        help="port for the web interface",
+    )
+
     arguments = parser.parse_args()
 
     if arguments.command == "build":
         _build_command(arguments.source_root, arguments.index)
-    else:
+    elif arguments.command == "serve":
         run_interactive(arguments.index)
-
+    else:
+        _ui_command(arguments.index, arguments.host, arguments.port)

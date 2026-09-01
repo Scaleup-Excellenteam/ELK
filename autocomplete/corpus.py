@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
+from unicodedata import category
 
 from .normalization import normalize_text
 
@@ -17,6 +18,18 @@ class CorpusEntry:
     offset: int
 
 
+def _strip_edge_noise(text: str) -> str:
+    """Remove whitespace and invisible control characters from line edges."""
+
+    start = 0
+    end = len(text)
+    while start < end and (text[start].isspace() or category(text[start]) == "Cc"):
+        start += 1
+    while end > start and (text[end - 1].isspace() or category(text[end - 1]) == "Cc"):
+        end -= 1
+    return text[start:end]
+
+
 def iter_corpus_entries(source_root: str | Path) -> Iterator[CorpusEntry]:
     """Yield searchable records from every ``.txt`` file under a directory."""
 
@@ -29,7 +42,9 @@ def iter_corpus_entries(source_root: str | Path) -> Iterator[CorpusEntry]:
 
         with text_file.open(encoding="utf-8") as lines:
             for line_number, line in enumerate(lines, start=1):
-                original_sentence = line.rstrip("\r\n")
+                # PDF-to-text corpora may leave page-break control characters
+                # at the edges of otherwise valid sentences.
+                original_sentence = _strip_edge_noise(line)
                 normalized_sentence = normalize_text(original_sentence)
 
                 if not normalized_sentence:
@@ -41,4 +56,3 @@ def iter_corpus_entries(source_root: str | Path) -> Iterator[CorpusEntry]:
                     source_text=relative_source,
                     offset=line_number,
                 )
-

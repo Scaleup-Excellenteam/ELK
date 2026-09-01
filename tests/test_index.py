@@ -6,6 +6,8 @@ from autocomplete.index import (
     _split_balanced,
     build_index,
     find_exact_matches,
+    find_exact_sentence_groups,
+    get_sentence_locations,
     iter_candidate_entries,
     ranked_one_edit_glob_groups,
 )
@@ -81,6 +83,26 @@ class CorpusIndexTests(unittest.TestCase):
 
         self.assertEqual(stored_sentences, 3)
         self.assertEqual(len(matches), 3)
+
+    def test_groups_duplicate_sentences_and_keeps_every_location(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_path = Path(temporary_directory)
+            corpus_path = temporary_path / "corpus"
+            corpus_path.mkdir()
+            (corpus_path / "sentences.txt").write_text(
+                "Repeated sentence.\nDifferent sentence.\nRepeated sentence.\n",
+                encoding="utf-8",
+            )
+            index_path = temporary_path / "autocomplete.sqlite3"
+            build_index(corpus_path, index_path, batch_size=2)
+
+            groups = find_exact_sentence_groups(index_path, "repeated")
+            locations = get_sentence_locations(index_path, groups[0][0])
+
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0][1], "Repeated sentence.")
+        self.assertEqual(groups[0][3], 2)
+        self.assertEqual(locations, [("sentences.txt", 1), ("sentences.txt", 3)])
 
     def test_rejects_a_non_positive_batch_size(self) -> None:
         with self.assertRaisesRegex(ValueError, "Batch size must be greater than zero"):

@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from autocomplete.engine import get_best_k_completions
+from autocomplete.engine import get_best_k_completions, get_best_unique_completions
 from autocomplete.index import build_index
 
 
@@ -191,6 +191,49 @@ class GetBestCompletionsTests(unittest.TestCase):
         self.assertTrue(all(result.score == 1 for result in results))
         self.assertIn("ca?", searched_patterns)
         self.assertNotIn("c?t", searched_patterns)
+
+    def test_unique_search_groups_duplicate_corpus_locations(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_path = Path(temporary_directory)
+            index_path = self._build_test_index(
+                temporary_path,
+                ["Python documentation.", "Python documentation.", "Python docs."],
+            )
+
+            results = get_best_unique_completions("python", index_path)
+
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0].completed_sentence, "Python documentation.")
+        repeated = next(
+            result
+            for result in results
+            if result.completed_sentence == "Python documentation."
+        )
+        self.assertEqual(repeated.occurrence_count, 2)
+
+    def test_unique_search_prefers_popular_sentences_when_scores_tie(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_path = Path(temporary_directory)
+            index_path = self._build_test_index(
+                temporary_path,
+                [
+                    '# Create a "table of contents" file.',
+                    "12 Table Of Contents",
+                    "16.4. TABLE OF CONTENTS",
+                    "4.2. Table of Contents",
+                    "Another Table of Contents heading",
+                    "Table of Contents",
+                    "Table of Contents",
+                    "Table of Contents",
+                ],
+            )
+
+            results = get_best_unique_completions("Table of Contents", index_path)
+
+        self.assertEqual(len(results), 5)
+        self.assertEqual(results[0].completed_sentence, "Table of Contents")
+        self.assertEqual(results[0].occurrence_count, 3)
+        self.assertTrue(all(result.score == 34 for result in results))
 
 
 if __name__ == "__main__":

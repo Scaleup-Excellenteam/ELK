@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Fast, typo-tolerant autocomplete over an indexed corpus." />
+    <title>Sentence Autocomplete</title>
+    <link rel="stylesheet" href="/static/styles.css?v=2" />
+    <script src="/static/app.js?v=2" defer></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        <div class="brand-copy">
+          <p class="eyebrow">Indexed corpus search</p>
+          <h1>Sentence Autocomplete</h1>
+          <p class="subtitle">Five ranked completions, tolerant of one typing mistake.</p>
+        </div>
+        <div class="status-pill" id="index-status">
+          <span class="status-dot" aria-hidden="true"></span><span>Checking index</span>
+        </div>
+      </header>
+
+      <section class="search-panel" aria-labelledby="search-heading">
+        <div class="search-intro">
+          <div><p class="eyebrow">Search</p><h2 id="search-heading">Complete a sentence</h2></div>
+          <p>Exact matches are ranked first. One missing, extra, or replaced character is allowed.</p>
+        </div>
+        <form id="search-form" class="search-form">
+          <label for="query">Start typing</label>
+          <div class="search-controls">
+            <span class="input-icon" aria-hidden="true">⌕</span>
+            <input id="query" name="query" type="text" maxlength="500" autocomplete="off"
+              spellcheck="false" placeholder="Try: python documentatjon" autofocus />
+            <button id="clear-button" class="clear-input" type="button" aria-label="Clear search" hidden>×</button>
+            <button id="search-button" class="primary-button" type="submit">
+              <span class="button-label">Search</span><span class="spinner" aria-hidden="true"></span>
+            </button>
+          </div>
+          <p class="input-hint">English letters, numbers, spaces and punctuation.</p>
+        </form>
+      </section>
+
+      <section class="results-section" aria-labelledby="results-heading">
+        <div class="results-heading-row">
+          <div><p class="eyebrow">Top matches</p><h2 id="results-heading">Suggestions</h2></div>
+          <p id="search-meta" class="search-meta" aria-live="polite">Ready to search</p>
+        </div>
+        <div id="message" class="message" role="alert" hidden></div>
+        <ol id="results" class="results-list" aria-live="polite"></ol>
+        <div id="empty-state" class="empty-state">
+          <div class="empty-icon" aria-hidden="true">⌕</div>
+          <h3>Search the indexed corpus</h3>
+          <p>Your five best unique completions will appear here.</p>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

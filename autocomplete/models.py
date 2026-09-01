@@ -12,3 +12,12 @@ class AutoCompleteData:
     offset: int
     score: int
 
+
+@dataclass
+class GroupedAutoCompleteData:
+    """One unique suggestion together with its number of corpus locations."""
+
+    sentence_id: int
+    completed_sentence: str
+    score: int
+    occurrence_count: int
