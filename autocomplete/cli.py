@@ -7,6 +7,7 @@ from typing import Callable
 
 from .engine import DEFAULT_INDEX_PATH, get_best_k_completions
 from .index import build_index
+from .translation import translate_results
 
 
 _INITIAL_PROMPT = "The system is ready. Enter your text:\n"
@@ -35,7 +36,7 @@ def run_interactive(
             continue
 
         current_text += typed_text
-        results = get_best_k_completions(current_text, index_path)
+        results = translate_results(get_best_k_completions(current_text, index_path))
 
         output_fn(f"Here are {len(results)} suggestions:")
         for position, result in enumerate(results, start=1):

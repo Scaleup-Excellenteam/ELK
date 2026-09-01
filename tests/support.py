@@ -3,8 +3,15 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from autocomplete.index import build_index
+
+
+def _translate_as_is(text: str, target_language: str = "es") -> str:
+    """Stand-in for ``translate_text`` that skips the network call entirely."""
+
+    return text
 
 
 class TemporaryCorpusTestCase(unittest.TestCase):
@@ -14,6 +21,18 @@ class TemporaryCorpusTestCase(unittest.TestCase):
         temporary_directory = tempfile.TemporaryDirectory()
         self.addCleanup(temporary_directory.cleanup)
         self.temporary_path = Path(temporary_directory.name)
+
+        # The CLI and web output paths translate every result to Spanish.
+        # Tests here care about the English corpus content, not translation
+        # itself (that has its own dedicated, mocked tests), so the actual
+        # network call is stubbed out by default for every test in this
+        # suite.
+        translation_patcher = patch(
+            "autocomplete.translation.translate_text",
+            side_effect=_translate_as_is,
+        )
+        translation_patcher.start()
+        self.addCleanup(translation_patcher.stop)
 
     def write_corpus(self, files: dict[str, str]) -> Path:
         """Write ``{relative name: file text}`` under a fresh corpus root."""

@@ -3,9 +3,13 @@
 import asyncio
 import sqlite3
 import unittest
+from dataclasses import replace
+from unittest.mock import patch
 
 import httpx
 
+from autocomplete.proto import completions_pb2
+from autocomplete.translation import translate_text
 from autocomplete.web import create_app
 from tests.support import TemporaryCorpusTestCase
 
@@ -173,6 +177,76 @@ class CompletionEndpointTests(WebApiTestCase):
 
     def test_rejects_a_get_request(self) -> None:
         self.assertEqual(self.request("GET", "/api/completions").status_code, 405)
+
+
+class CompletionTranslationTests(WebApiTestCase):
+    """Both API shapes translate results; the translation call is mocked."""
+
+    @staticmethod
+    def _translate_to_a_fixed_spanish_sentence(results, *_args, **_kwargs):
+        return [
+            replace(result, completed_sentence="La documentación de Python es útil.")
+            for result in results
+        ]
+
+    def test_the_json_endpoint_returns_the_translated_sentence(self) -> None:
+        with patch(
+            "autocomplete.web.translate_results",
+            side_effect=self._translate_to_a_fixed_spanish_sentence,
+        ) as translate:
+            response = self.request(
+                "POST", "/api/completions", json={"query": "python documentation"}
+            )
+
+        translate.assert_called_once()
+        body = response.json()
+        self.assertEqual(
+            body["suggestions"][0]["completed_sentence"],
+            "La documentación de Python es útil.",
+        )
+
+    def test_the_binary_endpoint_returns_the_translated_sentence(self) -> None:
+        request_proto = completions_pb2.CompletionRequestProto(query="python documentation")
+
+        with patch(
+            "autocomplete.web.translate_results",
+            side_effect=self._translate_to_a_fixed_spanish_sentence,
+        ):
+            response = self.request(
+                "POST",
+                "/api/completions/binary",
+                content=request_proto.SerializeToString(),
+                headers={"Content-Type": "application/x-protobuf"},
+            )
+
+        response_proto = completions_pb2.CompletionResponseProto()
+        response_proto.ParseFromString(response.content)
+        self.assertEqual(
+            response_proto.suggestions[0].completed_sentence,
+            "La documentación de Python es útil.",
+        )
+
+    def test_a_translation_failure_falls_back_to_the_english_sentence(self) -> None:
+        # translate_text itself never raises (see tests/test_translation.py);
+        # this confirms the fallback text still reaches the caller
+        # end-to-end when the underlying service call fails. setUp stubs
+        # translate_text to skip the network entirely, so it is restored to
+        # its real implementation here and the service call underneath it
+        # is what is made to fail.
+        with patch("autocomplete.translation.translate_text", side_effect=translate_text):
+            with patch(
+                "autocomplete.translation.GoogleTranslator.translate",
+                side_effect=ConnectionError("network unreachable"),
+            ):
+                response = self.request(
+                    "POST", "/api/completions", json={"query": "python documentation"}
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["suggestions"][0]["completed_sentence"],
+            "Python documentation is useful.",
+        )
 
 
 class LocationEndpointTests(WebApiTestCase):

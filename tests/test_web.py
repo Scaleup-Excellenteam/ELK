@@ -14,6 +14,17 @@ from autocomplete.web import create_app
 
 
 class AutocompleteWebTests(unittest.TestCase):
+    def setUp(self) -> None:
+        # Results are translated to Spanish before being returned; these
+        # tests care about the English corpus content, so the network call
+        # is stubbed out (translation itself has its own mocked tests).
+        translation_patcher = patch(
+            "autocomplete.translation.translate_text",
+            side_effect=lambda text, target_language="es": text,
+        )
+        translation_patcher.start()
+        self.addCleanup(translation_patcher.stop)
+
     def _build_test_app(self, temporary_path: Path):
         corpus_path = temporary_path / "corpus"
         corpus_path.mkdir()
