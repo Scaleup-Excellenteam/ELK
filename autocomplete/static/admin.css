@@ -1,0 +1,31 @@
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 18px; }
+.stat-card { padding: 16px 18px; border: 1px solid #e1e7f0; border-radius: 17px; background: rgba(255,255,255,.94); box-shadow: 0 10px 26px rgba(31,57,101,.06); }
+.stat-label { margin-bottom: 6px; color: #7b879d; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.stat-value { margin-bottom: 0; font-size: 24px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.stat-value-small { font-size: 14px; font-weight: 700; }
+.admin-log-section { padding: 26px; }
+.auto-refresh-label { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; cursor: pointer; }
+.log-table-wrap { overflow-x: auto; }
+.log-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.log-table th { padding: 8px 10px; border-bottom: 2px solid #e1e7f0; text-align: left; color: #7b879d; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+.log-table td { padding: 8px 10px; border-bottom: 1px solid #eef1f7; vertical-align: top; }
+.log-table tr:last-child td { border-bottom: 0; }
+.log-table td.mono { font-variant-numeric: tabular-nums; white-space: nowrap; color: #4e5d75; }
+.event-badge { display: inline-flex; padding: 3px 9px; border-radius: 999px; background: #eaf2ff; color: #1265db; font-size: 11px; font-weight: 750; }
+.event-badge.event-error, .event-badge.event-rejected { background: #fff4f2; color: #a2362d; }
+.log-query { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+
+.admin-tool-section { padding: 26px; margin-bottom: 18px; }
+.tool-description { max-width: 640px; margin: 0 0 16px; color: #63708a; font-size: 13px; line-height: 1.55; }
+.tool-description code { padding: 1px 5px; border-radius: 5px; background: #eef1f7; color: #384258; font-size: 12px; }
+.tool-controls { display: flex; align-items: center; gap: 10px; }
+.tool-controls input[type="text"] { flex: 1; max-width: 360px; height: 44px; padding: 0 16px; border: 1px solid #cad5e5; border-radius: 12px; outline: none; color: #172033; background: #fff; }
+.tool-controls input[type="text"]:focus { border-color: #4285f4; box-shadow: 0 0 0 4px rgba(66,133,244,.12); }
+.tool-controls .primary-button { height: 44px; min-width: 160px; }
+.tool-result { margin-top: 16px; padding: 14px 16px; border: 1px solid #e1e7f0; border-radius: 13px; background: #f9fbfe; font-size: 13px; line-height: 1.6; color: #3a4358; }
+.tool-result.tool-result-error { border-color: #f2d7d4; background: #fff7f6; color: #a2362d; }
+.wire-compare-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 8px; }
+.wire-compare-cell { padding: 10px 14px; border-radius: 11px; background: #fff; border: 1px solid #e7ecf3; }
+.wire-compare-cell .wire-label { margin: 0 0 4px; color: #7b879d; font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .05em; }
+.wire-compare-cell .wire-value { margin: 0; font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.wire-savings { font-weight: 750; color: #287544; }

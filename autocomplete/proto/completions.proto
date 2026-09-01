@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package autocomplete;
+
+// Compact wire format for the same request/response pair the JSON
+// /api/completions endpoint uses. Intended for links where every byte
+// costs time or power (e.g. a satellite uplink/downlink), where the
+// human-readable JSON envelope is pure overhead.
+
+message CompletionRequestProto {
+  string query = 1;
+}
+
+message CompletionItemProto {
+  int64 sentence_id = 1;
+  string completed_sentence = 2;
+  int32 score = 3;
+  int32 occurrence_count = 4;
+}
+
+message CompletionResponseProto {
+  string query = 1;
+  string normalized_query = 2;
+  double elapsed_ms = 3;
+  repeated CompletionItemProto suggestions = 4;
+}

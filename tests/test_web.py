@@ -1,4 +1,5 @@
 import asyncio
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +9,7 @@ import httpx
 
 from autocomplete.engine import get_best_unique_completions
 from autocomplete.index import build_index
+from autocomplete.proto import completions_pb2
 from autocomplete.web import create_app
 
 
@@ -168,6 +170,78 @@ class AutocompleteWebTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 422)
         self.assertIn("Only English", response.json()["detail"])
+
+    def test_binary_completions_match_json_and_use_fewer_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = self._build_test_app(Path(temporary_directory))
+
+            json_response = self._request(
+                app,
+                "POST",
+                "/api/completions",
+                json={"query": "python documentatjon"},
+            )
+
+            request_proto = completions_pb2.CompletionRequestProto(
+                query="python documentatjon"
+            )
+            binary_response = self._request(
+                app,
+                "POST",
+                "/api/completions/binary",
+                content=request_proto.SerializeToString(),
+                headers={"Content-Type": "application/x-protobuf"},
+            )
+
+        self.assertEqual(binary_response.status_code, 200)
+        response_proto = completions_pb2.CompletionResponseProto()
+        response_proto.ParseFromString(binary_response.content)
+
+        self.assertEqual(response_proto.normalized_query, "python documentatjon")
+        self.assertEqual(len(response_proto.suggestions), 1)
+        self.assertEqual(
+            response_proto.suggestions[0].completed_sentence,
+            "Python documentation is useful.",
+        )
+        self.assertEqual(response_proto.suggestions[0].occurrence_count, 2)
+
+        # The whole point of the binary endpoint: same data, fewer bytes on
+        # the wire than the human-readable JSON envelope.
+        self.assertLess(len(binary_response.content), len(json_response.content))
+
+    def test_binary_completions_rejects_malformed_bodies(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = self._build_test_app(Path(temporary_directory))
+
+            response = self._request(
+                app,
+                "POST",
+                "/api/completions/binary",
+                content=b"\xff\xff\xff not a valid protobuf message",
+                headers={"Content-Type": "application/x-protobuf"},
+            )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_health_check_reports_unavailable_without_an_api_key(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = self._build_test_app(Path(temporary_directory))
+
+            self._request(
+                app,
+                "POST",
+                "/api/completions",
+                json={"query": "python"},
+            )
+
+            with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("GEMINI_API_KEY", None)
+                response = self._request(app, "POST", "/api/admin/health-check")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertFalse(body["available"])
+        self.assertIn("GEMINI_API_KEY", body["summary"])
 
     def test_reports_a_missing_index(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
