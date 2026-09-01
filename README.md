@@ -291,7 +291,7 @@ python -m unittest discover -s tests -v
 
 The test suite covers corpus loading, normalization, index construction,
 candidate retrieval, typo scoring, Top-5 ranking, duplicate grouping, CLI
-behavior, and the FastAPI endpoints.
+behavior, bounded LRU caching, and the FastAPI endpoints.
 
 ## Architecture
 
@@ -312,14 +312,25 @@ Online phase
 User input
         │
         ▼
+Bounded LRU cache lookup
+        │ cache miss
+        ▼
 Exact lookup → indexed one-edit candidates
         │
         ▼
 Scoring → bounded Top-5 heap
         │
         ▼
+Store result in cache
+        │
+        ▼
 CLI / JSON API / live browser suggestions
 ```
+
+The FastAPI service keeps up to 1,000 recent normalized queries in memory.
+Repeated equivalent queries bypass SQLite, and the least-recently-used result
+is removed when the cache is full. The index file timestamp and size are part
+of each cache key, so rebuilding the index does not return stale suggestions.
 
 Important modules:
 
@@ -330,6 +341,7 @@ Important modules:
 | `autocomplete/index.py` | SQLite index construction and candidate queries |
 | `autocomplete/scoring.py` | Exact and one-character-edit scoring |
 | `autocomplete/engine.py` | Ranking and Top-5 result selection |
+| `autocomplete/cache.py` | Thread-safe bounded LRU cache |
 | `autocomplete/cli.py` | Build, CLI, and UI commands |
 | `autocomplete/web.py` | FastAPI routes and response models |
 | `autocomplete/static/` | Browser interface |

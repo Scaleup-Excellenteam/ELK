@@ -8,12 +8,18 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .cache import LruCache
 from .engine import DEFAULT_INDEX_PATH, get_best_unique_completions
 from .index import get_sentence_locations
+from .models import GroupedAutoCompleteData
 from .normalization import is_supported_normalized_query, normalize_text
 
 
 _STATIC_DIRECTORY = Path(__file__).with_name("static")
+_DEFAULT_CACHE_CAPACITY = 1_000
+
+CompletionCacheKey = tuple[str, int, int]
+CompletionCacheValue = tuple[GroupedAutoCompleteData, ...]
 
 
 class CompletionRequest(BaseModel):
@@ -44,7 +50,10 @@ class LocationResponse(BaseModel):
     next_offset: int | None
 
 
-def create_app(index_path: str | Path = DEFAULT_INDEX_PATH) -> FastAPI:
+def create_app(
+    index_path: str | Path = DEFAULT_INDEX_PATH,
+    cache_capacity: int = _DEFAULT_CACHE_CAPACITY,
+) -> FastAPI:
     """Create an application bound to one on-disk search index."""
 
     app = FastAPI(
@@ -53,6 +62,10 @@ def create_app(index_path: str | Path = DEFAULT_INDEX_PATH) -> FastAPI:
         version="1.0.0",
     )
     app.state.index_path = Path(index_path)
+    app.state.completion_cache = LruCache[
+        CompletionCacheKey,
+        CompletionCacheValue,
+    ](cache_capacity)
     app.mount("/static", StaticFiles(directory=_STATIC_DIRECTORY), name="static")
 
     @app.get("/", include_in_schema=False)
@@ -91,7 +104,23 @@ def create_app(index_path: str | Path = DEFAULT_INDEX_PATH) -> FastAPI:
             )
 
         started_at = perf_counter()
-        results = get_best_unique_completions(normalized_query, app.state.index_path)
+        index_stat = app.state.index_path.stat()
+        cache_key = (
+            normalized_query,
+            index_stat.st_mtime_ns,
+            index_stat.st_size,
+        )
+        cache_hit, cached_results = app.state.completion_cache.get(cache_key)
+        if cache_hit:
+            results = cached_results or ()
+        else:
+            results = tuple(
+                get_best_unique_completions(
+                    normalized_query,
+                    app.state.index_path,
+                )
+            )
+            app.state.completion_cache.put(cache_key, results)
         elapsed_ms = (perf_counter() - started_at) * 1_000
 
         return CompletionResponse(

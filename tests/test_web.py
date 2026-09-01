@@ -2,9 +2,11 @@ import asyncio
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import httpx
 
+from autocomplete.engine import get_best_unique_completions
 from autocomplete.index import build_index
 from autocomplete.web import create_app
 
@@ -105,6 +107,53 @@ class AutocompleteWebTests(unittest.TestCase):
                 {"source_text": "sentences.txt", "offset": 3},
             ],
         )
+
+    def test_reuses_cached_results_for_equivalent_queries(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            app = self._build_test_app(Path(temporary_directory))
+
+            with patch(
+                "autocomplete.web.get_best_unique_completions",
+                wraps=get_best_unique_completions,
+            ) as search:
+                first = self._request(
+                    app,
+                    "POST",
+                    "/api/completions",
+                    json={"query": "Python documentation"},
+                )
+                second = self._request(
+                    app,
+                    "POST",
+                    "/api/completions",
+                    json={"query": "  PYTHON   DOCUMENTATION!!!  "},
+                )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(first.json()["suggestions"], second.json()["suggestions"])
+        self.assertEqual(search.call_count, 1)
+
+    def test_cache_evicts_the_least_recently_used_query(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_path = Path(temporary_directory)
+            app = self._build_test_app(temporary_path)
+            app.state.completion_cache = type(app.state.completion_cache)(2)
+
+            with patch(
+                "autocomplete.web.get_best_unique_completions",
+                wraps=get_best_unique_completions,
+            ) as search:
+                for query in ("python", "unrelated", "python", "completely", "unrelated"):
+                    response = self._request(
+                        app,
+                        "POST",
+                        "/api/completions",
+                        json={"query": query},
+                    )
+                    self.assertEqual(response.status_code, 200)
+
+        self.assertEqual(search.call_count, 4)
 
     def test_rejects_unsupported_input(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
