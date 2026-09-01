@@ -316,6 +316,19 @@ environment variable — never commit it to the repository or hardcode it in
 source. Without a key, the endpoint still responds (HTTP 200) but reports
 `"available": false` with an explanatory message, instead of failing.
 
+Easiest setup — copy the template and fill in your key:
+
+```console
+cp .env.example .env
+```
+
+Then edit `.env` and set `GEMINI_API_KEY=your-key-here`. It is loaded
+automatically on startup (`python -m autocomplete ...`) and is git-ignored,
+so it never gets committed.
+
+Alternatively, set the environment variable directly for one terminal
+session:
+
 ```console
 # Windows PowerShell
 $env:GEMINI_API_KEY = "your-key-here"
@@ -443,6 +456,7 @@ Archive.zip
 __pycache__/
 .pytest_cache/
 autocomplete/logs/
+.env
 ```
 
-Do not commit the corpus or generated index.
+Do not commit the corpus, the generated index, or your `.env` file.
