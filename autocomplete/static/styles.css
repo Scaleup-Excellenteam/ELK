@@ -6,6 +6,9 @@ button, input { font: inherit; }
 button { cursor: pointer; }
 .app-shell { width: min(980px, calc(100% - 32px)); margin: 0 auto; padding: 48px 0 72px; }
 .app-header { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; }
+.admin-nav { margin-bottom: 18px; }
+.admin-nav a { color: #1769e0; font-size: 13px; font-weight: 700; text-decoration: none; }
+.admin-nav a:hover { text-decoration: underline; }
 .brand-copy { flex: 1; }
 .brand-mark { width: 52px; height: 52px; flex: 0 0 52px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; padding: 10px; border-radius: 16px; background: #fff; box-shadow: 0 10px 28px rgba(32,64,120,.12); }
 .brand-mark span { border-radius: 50%; }
