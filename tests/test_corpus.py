@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from zipfile import ZipFile
 
 from autocomplete.corpus import CorpusEntry, iter_corpus_entries
 
@@ -58,8 +59,41 @@ class IterCorpusEntriesTests(unittest.TestCase):
 
         self.assertEqual(sources, ["a.txt", "z.txt"])
 
+    def test_reads_text_files_directly_from_a_zip_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            archive_path = Path(temporary_directory) / "Archive.zip"
+            with ZipFile(archive_path, "w") as archive:
+                archive.writestr("Archive/z.txt", "Last file\n")
+                archive.writestr(
+                    "Archive/nested/a.txt",
+                    "First line\n\nSecond line\n",
+                )
+                archive.writestr("Archive/ignored.md", "Not part of the corpus\n")
+
+            entries = list(iter_corpus_entries(archive_path))
+
+        self.assertEqual(
+            entries,
+            [
+                CorpusEntry("First line", "first line", "nested/a.txt", 1),
+                CorpusEntry("Second line", "second line", "nested/a.txt", 3),
+                CorpusEntry("Last file", "last file", "z.txt", 1),
+            ],
+        )
+
+    def test_reads_a_zip_whose_text_files_have_no_wrapper_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            archive_path = Path(temporary_directory) / "corpus.zip"
+            with ZipFile(archive_path, "w") as archive:
+                archive.writestr("sentences.txt", "A zipped sentence.\n")
+
+            entries = list(iter_corpus_entries(archive_path))
+
+        self.assertEqual(entries[0].source_text, "sentences.txt")
+        self.assertEqual(entries[0].original_sentence, "A zipped sentence.")
+
     def test_rejects_a_missing_corpus_directory(self) -> None:
-        with self.assertRaisesRegex(ValueError, "Corpus directory does not exist"):
+        with self.assertRaisesRegex(ValueError, "directory or ZIP archive"):
             list(iter_corpus_entries("directory-that-does-not-exist"))
 
 

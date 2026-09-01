@@ -1,6 +1,6 @@
 Archive/
+Archive.zip
 *.sqlite3
 __pycache__/
 .pytest_cache/
 .venv/
-
