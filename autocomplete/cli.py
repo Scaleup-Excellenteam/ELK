@@ -7,6 +7,7 @@ from typing import Callable
 
 from .engine import DEFAULT_INDEX_PATH, get_best_k_completions
 from .index import build_index
+from .snapshot import build_snapshot, resolve_active_index_path
 
 
 _INITIAL_PROMPT = "The system is ready. Enter your text:\n"
@@ -35,7 +36,11 @@ def run_interactive(
             continue
 
         current_text += typed_text
-        results = get_best_k_completions(current_text, index_path)
+        # Resolved fresh on every turn, so a snapshot published by a
+        # concurrent offline build is picked up on the very next lookup,
+        # with no restart of this session.
+        active_index_path = resolve_active_index_path(index_path)
+        results = get_best_k_completions(current_text, active_index_path)
 
         output_fn(f"Here are {len(results)} suggestions:")
         for position, result in enumerate(results, start=1):
@@ -52,6 +57,17 @@ def _build_command(source_root: str, index_path: str) -> None:
     print(
         f"Index ready: {stored_sentences} sentences stored in "
         f"{elapsed:.2f} seconds."
+    )
+
+
+def _build_snapshot_command(source_root: str, index_path: str) -> None:
+    start = perf_counter()
+    snapshot_path, stored_sentences = build_snapshot(source_root, index_path)
+    elapsed = perf_counter() - start
+    print(
+        f"Snapshot ready: {stored_sentences} sentences stored in "
+        f"{elapsed:.2f} seconds at {snapshot_path}. "
+        f"{index_path}.current now points to it."
     )
 
 
@@ -76,6 +92,20 @@ def main() -> None:
         "--index",
         default=str(DEFAULT_INDEX_PATH),
         help="SQLite index path",
+    )
+
+    build_snapshot_parser = subparsers.add_parser(
+        "build-snapshot",
+        help="build a new versioned snapshot and atomically publish it (zero downtime)",
+    )
+    build_snapshot_parser.add_argument(
+        "source_root",
+        help="directory or ZIP archive containing corpus text files",
+    )
+    build_snapshot_parser.add_argument(
+        "--index",
+        default=str(DEFAULT_INDEX_PATH),
+        help="base index path whose pointer file is atomically updated",
     )
 
     serve_parser = subparsers.add_parser("serve", help="start interactive autocomplete")
@@ -107,6 +137,8 @@ def main() -> None:
 
     if arguments.command == "build":
         _build_command(arguments.source_root, arguments.index)
+    elif arguments.command == "build-snapshot":
+        _build_snapshot_command(arguments.source_root, arguments.index)
     elif arguments.command == "serve":
         run_interactive(arguments.index)
     else:
