@@ -3,6 +3,7 @@
 import random
 import sqlite3
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from autocomplete.index import (
@@ -24,7 +25,7 @@ from tests.support import TemporaryCorpusTestCase
 
 
 def _rows(index_path: Path, sql: str, parameters: tuple = ()) -> list[tuple]:
-    with sqlite3.connect(index_path) as connection:
+    with closing(sqlite3.connect(index_path)) as connection:
         return connection.execute(sql, parameters).fetchall()
 
 

@@ -14,7 +14,7 @@ from .normalization import is_supported_normalized_query, normalize_text
 
 _WELCOME_TITLE = "Sentence Autocomplete\n---------------------"
 _WELCOME_HELP = "Type text to search | # reset | Ctrl+C exit"
-_INITIAL_PROMPT = "\nSearch > "
+_INITIAL_PROMPT = "The system is ready. Enter your text:\n"
 
 CliCacheKey = tuple[str, int, int]
 CliCacheValue = tuple[AutoCompleteData, ...]
@@ -55,16 +55,23 @@ def run_interactive(
     input_fn: Callable[[str], str] = input,
     output_fn: Callable[[str], None] = print,
     cache_capacity: int = DEFAULT_CACHE_CAPACITY,
+    pretty: bool | None = None,
 ) -> None:
     """Read text fragments and display completions until input ends."""
 
     current_text = ""
     completion_cache = LruCache[CliCacheKey, CliCacheValue](cache_capacity)
-    output_fn(_WELCOME_TITLE)
-    output_fn(_WELCOME_HELP)
+    if pretty is None:
+        pretty = input_fn is input and output_fn is print
+    if pretty:
+        output_fn(_WELCOME_TITLE)
+        output_fn(_WELCOME_HELP)
 
     while True:
-        prompt = f"\nContinue [{current_text}] > " if current_text else _INITIAL_PROMPT
+        if pretty:
+            prompt = f"\nContinue [{current_text}] > " if current_text else "\nSearch > "
+        else:
+            prompt = current_text if current_text else _INITIAL_PROMPT
 
         try:
             typed_text = input_fn(prompt)
@@ -74,7 +81,8 @@ def run_interactive(
 
         if "#" in typed_text:
             current_text = ""
-            output_fn("\nQuery reset.")
+            if pretty:
+                output_fn("\nQuery reset.")
             continue
 
         current_text += typed_text
@@ -84,18 +92,26 @@ def run_interactive(
             completion_cache,
         )
 
-        if not results:
-            output_fn("\nNo suggestions found.")
-            continue
+        if pretty:
+            if not results:
+                output_fn("\nNo suggestions found.")
+                continue
 
-        output_fn(f"\nSuggestions ({len(results)})")
-        output_fn("----------------")
-        for position, result in enumerate(results, start=1):
-            output_fn(f"{position}) {result.completed_sentence}")
-            output_fn(
-                f"   Source: {result.source_text} | "
-                f"line {result.offset} | score {result.score}"
-            )
+            output_fn(f"\nSuggestions ({len(results)})")
+            output_fn("----------------")
+            for position, result in enumerate(results, start=1):
+                output_fn(f"{position}) {result.completed_sentence}")
+                output_fn(
+                    f"   Source: {result.source_text} | "
+                    f"line {result.offset} | score {result.score}"
+                )
+        else:
+            output_fn(f"Here are {len(results)} suggestions:")
+            for position, result in enumerate(results, start=1):
+                output_fn(
+                    f"{position}. {result.completed_sentence} "
+                    f"({result.source_text}:{result.offset}, score={result.score})"
+                )
 
 
 def _build_command(source_root: str, index_path: str) -> None:

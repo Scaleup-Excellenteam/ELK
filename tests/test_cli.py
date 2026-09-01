@@ -71,7 +71,12 @@ class InteractiveCliTests(unittest.TestCase):
                 except StopIteration as error:
                     raise EOFError from error
 
-            run_interactive(index_path, input_fn=fake_input, output_fn=output.append)
+            run_interactive(
+                index_path,
+                input_fn=fake_input,
+                output_fn=output.append,
+                pretty=True,
+            )
 
         self.assertEqual(prompts[1], "\nContinue [this] > ")
         self.assertIn("This phrase is complete.", "\n".join(output))
@@ -97,6 +102,7 @@ class InteractiveCliTests(unittest.TestCase):
                 "unused.sqlite3",
                 input_fn=self._input_from(["important"]),
                 output_fn=output.append,
+                pretty=True,
             )
 
         self.assertIn("\nSuggestions (1)", output)

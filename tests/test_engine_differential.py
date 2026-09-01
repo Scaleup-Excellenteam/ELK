@@ -9,6 +9,7 @@ a better result fails here.
 import random
 import sqlite3
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from autocomplete.corpus import iter_corpus_entries
@@ -100,7 +101,7 @@ class ExhaustiveScanAgreementTests(TemporaryCorpusTestCase):
     ) -> list[GroupedAutoCompleteData]:
         normalized_query = normalize_text(query)
 
-        with sqlite3.connect(index_path) as connection:
+        with closing(sqlite3.connect(index_path)) as connection:
             groups = connection.execute(
                 """
                 SELECT id, original_sentence, normalized_sentence, occurrence_count

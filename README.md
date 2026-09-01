@@ -302,7 +302,7 @@ curl -X POST http://127.0.0.1:8000/api/completions \
 From the repository root:
 
 ```console
-python -m unittest discover -s tests -v
+python -m unittest discover -v
 ```
 
 The test suite covers corpus loading, normalization, index construction,

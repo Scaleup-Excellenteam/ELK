@@ -5,6 +5,7 @@ import io
 import sqlite3
 import sys
 import unittest
+from contextlib import closing
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
@@ -59,7 +60,7 @@ class BuildThenSearchTests(TemporaryCorpusTestCase):
                 main()
 
     def test_the_build_command_indexes_only_the_text_files(self) -> None:
-        with sqlite3.connect(self.index_path) as connection:
+        with closing(sqlite3.connect(self.index_path)) as connection:
             sentences = {
                 sentence
                 for (sentence,) in connection.execute(

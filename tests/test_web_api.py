@@ -3,6 +3,7 @@
 import asyncio
 import sqlite3
 import unittest
+from contextlib import closing
 
 import httpx
 
@@ -41,7 +42,7 @@ class WebApiTestCase(TemporaryCorpusTestCase):
         return asyncio.run(send_request())
 
     def sentence_id_of(self, sentence: str) -> int:
-        with sqlite3.connect(self.index_path) as connection:
+        with closing(sqlite3.connect(self.index_path)) as connection:
             (sentence_id,) = connection.execute(
                 "SELECT id FROM sentence_groups WHERE original_sentence = ?",
                 (sentence,),

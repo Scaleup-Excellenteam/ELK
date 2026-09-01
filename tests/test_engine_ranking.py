@@ -2,6 +2,7 @@
 
 import sqlite3
 import unittest
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
@@ -243,7 +244,7 @@ class UniqueCompletionTests(TemporaryCorpusTestCase):
 
         (result,) = get_best_unique_completions("python", index_path)
 
-        with sqlite3.connect(index_path) as connection:
+        with closing(sqlite3.connect(index_path)) as connection:
             (stored_sentence,) = connection.execute(
                 "SELECT original_sentence FROM sentence_groups WHERE id = ?",
                 (result.sentence_id,),
