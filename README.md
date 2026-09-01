@@ -376,6 +376,9 @@ Scoring → bounded Top-5 heap
 Store result in cache
         │
         ▼
+Translate results to Spanish
+        │
+        ▼
 CLI / JSON API / live browser suggestions
 ```
 
@@ -383,6 +386,13 @@ The FastAPI service keeps up to 1,000 recent normalized queries in memory.
 Repeated equivalent queries bypass SQLite, and the least-recently-used result
 is removed when the cache is full. The index file timestamp and size are part
 of each cache key, so rebuilding the index does not return stale suggestions.
+
+Every completed sentence is translated to Spanish (via `deep-translator`,
+which wraps the free Google Translate endpoint) right before it reaches the
+CLI or an API response. The cache stores the original English results, so
+translation runs on every request regardless of cache hits. If the
+translation service is unreachable or errors, the original English text is
+returned instead of failing the request.
 
 Important modules:
 
@@ -400,6 +410,7 @@ Important modules:
 | `autocomplete/logging_setup.py` | Structured request logging (file + in-memory buffer) |
 | `autocomplete/proto/` | Protobuf schema and generated bindings for the binary endpoint |
 | `autocomplete/ai_health.py` | Gemini-based log health summaries |
+| `autocomplete/translation.py` | Translates outgoing results to Spanish |
 | `autocomplete/static/admin.*` | Admin dashboard (stats, live feed, benchmark, health check) |
 
 ## Troubleshooting

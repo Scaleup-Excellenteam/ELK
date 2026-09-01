@@ -18,6 +18,7 @@ from .logging_setup import get_log_file_size, get_recent_entries, log_event
 from .models import GroupedAutoCompleteData
 from .normalization import is_supported_normalized_query, normalize_text
 from .proto import completions_pb2
+from .translation import translate_results
 
 
 _STATIC_DIRECTORY = Path(__file__).with_name("static")
@@ -223,6 +224,7 @@ def create_app(
         normalized_query, results, elapsed_ms = resolve_completions(
             request.query, client_host
         )
+        results = translate_results(list(results))
 
         return CompletionResponse(
             query=request.query,
@@ -266,6 +268,7 @@ def create_app(
         normalized_query, results, elapsed_ms = resolve_completions(
             request_proto.query, client_host
         )
+        results = translate_results(list(results))
 
         response_proto = completions_pb2.CompletionResponseProto(
             query=request_proto.query,
